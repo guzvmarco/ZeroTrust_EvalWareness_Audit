@@ -1,0 +1,2 @@
+# Root convenience wrapper so `pip install -r requirements.txt` works from repo root
+-r backend/requirements.txt

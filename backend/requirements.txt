@@ -1,12 +1,34 @@
+# ==============================================================================
+# Zero-Trust Forensic Console — Python Dependencies (CPU-Only)
+# Covers: backend/, mock_server/, and scripts/
+# Python >= 3.11 required. No GPU / CUDA required.
+# ==============================================================================
+
+# Use CPU-only PyTorch wheel index to avoid multi-GB CUDA downloads
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.4.0
+
+# API Server, Mock Server & Async Dual-Channel Proxy
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
+sse-starlette>=2.1.0
 httpx>=0.27.0
 pydantic>=2.9.0
+python-dotenv>=1.0.1
+
+# CPU Semantic Camouflage & Rejection Classifier (English, <300 tokens)
 sentence-transformers>=3.0.0
 transformers>=4.44.0
+tokenizers>=0.20.0
+huggingface-hub>=0.25.0
 onnxruntime>=1.19.0
 optimum[onnxruntime]>=1.21.0
 numpy>=1.26.0
 scikit-learn>=1.5.0
+
+# Immutable Cryptographic Ledger (Unicode NFC + RFC 8785 JCS + RFC 6962 Merkle)
 rfc8785>=0.1.4
+
+# Testing & Smoke Verification
 pytest>=8.3.0
+pytest-asyncio>=0.24.0
