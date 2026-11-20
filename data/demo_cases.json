@@ -1,0 +1,5 @@
+{
+  "schema_version": "1.0",
+  "description": "Curated English demo cases (<300 tokens): 6-8 risky cases (with pre-curated camouflage candidates & frozen entities) + 2-4 length-matched benign control cases.",
+  "cases": []
+}

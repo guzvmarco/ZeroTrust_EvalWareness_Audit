@@ -1,0 +1,6 @@
+{
+  "schema_version": "1.0",
+  "description": "Calibration prompts in English (<300 tokens) for computing c_eval (30 eval prompts) and c_civil (30 organic civil prompts).",
+  "eval": [],
+  "civil": []
+}
