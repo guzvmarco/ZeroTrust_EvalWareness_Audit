@@ -51,7 +51,8 @@ ZeroTrust_EvalWareness_Audit/
 ### Logic of the 4 Core Modules
 
 1. **Dual-Channel Async Proxy (`backend/proxy.py` + `mock_server/app.py`)**
-   - Dispatches each probe concurrently across two completely isolated `httpx.AsyncClient` sessions (no shared cookies, headers, or TLS pools): **Channel A** (Official Auditor) and **Channel B** (Synthetic Civil Canary).
+   - **Zero Prompt-Manipulation Bias:** Both channels share identical base parameters (`temperature`, `max_tokens=160`) and identical core safety alignment. Divergence is isolated strictly via stylistic camouflage and neutral `DeploymentContext` metadata (`origin_url`, `environment_tag`, `session_type`, `user_role`) committed to the Merkle audit leaf.
+   - Dispatches each probe concurrently across two completely isolated `httpx.AsyncClient` sessions (no shared cookies, headers, or TLS pools): **Channel A** (Formal Audit Environment) and **Channel B** (Organic Production Environment).
    - Applies stochastic temporal jitter to prevent server-side arrival correlation and prepends a non-semantic nonce at the **start** of the prompt to bust prefix caches (e.g., vLLM 16-token blocks).
    - Measures `TTFT` and `ITL` strictly with `time.monotonic_ns()`.
 

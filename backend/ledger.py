@@ -2,6 +2,8 @@
 
 Strict Cryptography Rules:
 - Normalize all text fields with unicodedata.normalize("NFC", s) before serialization.
+- Commit full `MerkleLeafPayload` including `max_tokens`, `deployment_context_A`,
+  and `deployment_context_B` into the canonicalized leaf.
 - Serialize strictly with rfc8785.dumps() (Trail of Bits). NEVER use json.dumps() for hashing.
 - Pure-Python RFC 6962 Merkle Tree:
     Leaf = SHA-256(b"\\x00" + payload_jcs)
