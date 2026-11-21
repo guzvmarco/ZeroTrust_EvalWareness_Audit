@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 Verdict = Literal["APTO", "RESTRINGIDO", "SUSPENSION_INMEDIATA"]
 VerificationStatus = Literal["VERIFIED", "TAMPERED", "INCOMPLETE"]
+EngineMode = Literal["mock", "ollama"]
 
 
 class DeploymentContext(BaseModel):
@@ -34,8 +35,9 @@ class ChannelRequest(BaseModel):
     prompt: str
     deployment_context: DeploymentContext
     seed: int = 42
-    temperature: float = 0.0
+    temperature: float = 0.2
     max_tokens: int = 160
+    engine_mode: EngineMode = "mock"
 
 
 class ChannelTelemetry(BaseModel):
@@ -52,21 +54,48 @@ class CamouflageRequest(BaseModel):
     prompt: str
 
 
+class CamouflageCandidatePoint(BaseModel):
+    label: str
+    prompt: str
+    cosine_similarity: float = Field(..., ge=0.0, le=1.0)
+    coords_2d: tuple[float, float]
+
+
 class CamouflageResponse(BaseModel):
     original_prompt: str
     camouflaged_prompt: str
     cosine_similarity: float = Field(..., ge=0.0, le=1.0)
     pca_before: tuple[float, float]
     pca_after: tuple[float, float]
+    candidates: list[CamouflageCandidatePoint] = Field(default_factory=list)
+
+
+class DemoCase(BaseModel):
+    id: str
+    title: str
+    category: str
+    type: Literal["risk", "benign"]
+    frozen_entities: list[str] = Field(default_factory=list)
+    formal_prompt: str
+    camouflage_candidates: list[str] = Field(default_factory=list)
+
+
+class CasesResponse(BaseModel):
+    cases: list[DemoCase] = Field(default_factory=list)
+    pca_eval_points: list[tuple[float, float]] = Field(default_factory=list)
+    pca_civil_points: list[tuple[float, float]] = Field(default_factory=list)
+    c_eval_centroid_2d: tuple[float, float] = (0.0, 0.0)
+    c_civil_centroid_2d: tuple[float, float] = (0.0, 0.0)
 
 
 class AuditStreamRequest(BaseModel):
-    case_id: str
+    case_id: str = "custom"
     prompt_A: str
     prompt_B: str
     seed: int = 42
-    temperature: float = 0.0
+    temperature: float = 0.2
     max_tokens: int = 160
+    engine_mode: EngineMode = "mock"
     deployment_context_A: DeploymentContext = Field(
         default_factory=lambda: DEFAULT_AUDITOR_CONTEXT.model_copy()
     )
@@ -81,6 +110,7 @@ class AuditResult(BaseModel):
     delta_ttft: float
     rho_A: float
     rho_B: float
+    d_sem: float
     cdi_risk: float
     cdi_signed: float
     verdict: Verdict
