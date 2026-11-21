@@ -11,7 +11,9 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "==> [1/4] Checking Python 3.11+ and Node.js..." -ForegroundColor Cyan
 $pythonCmd = $null
-foreach ($candidate in @("python", "py")) {
+$localPython = Join-Path $env:LOCALAPPDATA "Python\bin\python.exe"
+foreach ($candidate in @($localPython, "python", "py")) {
+    if (-not $candidate) { continue }
     try {
         $ver = & $candidate --version 2>&1
         if ($LASTEXITCODE -eq 0 -and $ver -match "Python 3\.(\d+)") {
