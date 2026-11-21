@@ -38,7 +38,15 @@ const GENERIC_FALLBACK = (prompt) => ({
 });
 
 /** Cohesive, tactile AI composer card used in the centered hero and docked in active threads. */
-function Composer({ value, onChange, onSend, disabled, engineMode, compact = false }) {
+function Composer({
+  value,
+  onChange,
+  onSend,
+  disabled,
+  engineMode,
+  selectedModel = "qwen2.5:7b",
+  compact = false,
+}) {
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -55,10 +63,11 @@ function Composer({ value, onChange, onSend, disabled, engineMode, compact = fal
     }
   };
 
-  const targetLabel =
-    engineMode === "ollama"
-      ? "Target: localhost:11434 · qwen2.5:7b"
-      : "Simulated Vendor Endpoint";
+  const isSimulated =
+    engineMode === "mock" || selectedModel === "simulated-adversarial-vendor";
+  const targetLabel = isSimulated
+    ? "Simulated Vendor Endpoint · localhost:8001"
+    : `Live Model: ${selectedModel} via localhost:11434`;
 
   return (
     <div
@@ -79,7 +88,7 @@ function Composer({ value, onChange, onSend, disabled, engineMode, compact = fal
 
       <div className="mt-2.5 pt-2.5 border-t border-[#e5dec9]/75 flex flex-wrap items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f8f4ec] border border-[#e5dec9] px-3 py-1 text-xs font-medium text-[#0c2340]/75">
-          {engineMode === "ollama" ? (
+          {!isSimulated ? (
             <Cpu className="w-3.5 h-3.5 text-[#ae9142]" />
           ) : (
             <Server className="w-3.5 h-3.5 text-[#ae9142]" />
@@ -168,7 +177,13 @@ function EvidenceDrawer({ children }) {
 }
 
 export default function App() {
-  const [engineMode, setEngineMode] = useState("mock"); // "mock" | "ollama"
+  const [engineMode, setEngineMode] = useState("ollama"); // "ollama" | "mock"
+  const [selectedModel, setSelectedModel] = useState("qwen2.5:7b");
+  const [availableModels, setAvailableModels] = useState([
+    "qwen2.5:7b",
+    "simulated-adversarial-vendor",
+  ]);
+  const [ollamaConnected, setOllamaConnected] = useState(false);
   const [apiMode, setApiMode] = useState("CHECKING"); // "LIVE" | "DEMO_PREVIEW"
   const [input, setInput] = useState("");
   const [audits, setAudits] = useState([]);
@@ -193,17 +208,32 @@ export default function App() {
     setAudits((prev) => prev.map((a) => (a.id === id ? { ...a, [key]: a[key] + token } : a)));
   }, []);
 
-  // Probe backend once for status + real PCA clusters (501 / offline => Demo Preview).
+  // Probe backend once for status, PCA clusters, and local Ollama models (/api/models).
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const res = await fetch("/api/cases");
-        if (!res.ok) {
+        const [casesRes, modelsRes] = await Promise.all([
+          fetch("/api/cases"),
+          fetch("/api/models").catch(() => null),
+        ]);
+        if (modelsRes && modelsRes.ok && mounted) {
+          const mData = await modelsRes.json();
+          if (Array.isArray(mData.models) && mData.models.length > 0) {
+            setAvailableModels(mData.models);
+            const preferred = mData.default_model || mData.models[0];
+            setSelectedModel(preferred);
+            setEngineMode(
+              preferred === "simulated-adversarial-vendor" ? "mock" : "ollama"
+            );
+          }
+          setOllamaConnected(Boolean(mData.ollama_connected));
+        }
+        if (!casesRes.ok) {
           if (mounted) setApiMode("DEMO_PREVIEW");
           return;
         }
-        const data = await res.json();
+        const data = await casesRes.json();
         if (!mounted) return;
         if (data.pca_eval_points?.length) setEvalCluster(data.pca_eval_points);
         if (data.pca_civil_points?.length) setCivilCluster(data.pca_civil_points);
@@ -348,7 +378,9 @@ export default function App() {
           seed: 42,
           temperature: 0.2,
           max_tokens: 160,
-          engine_mode: engineMode,
+          engine_mode:
+            selectedModel === "simulated-adversarial-vendor" ? "mock" : engineMode,
+          model_name: selectedModel,
           deployment_context_A: DEFAULT_AUDITOR_CTX,
           deployment_context_B: DEFAULT_CANARY_CTX,
         }),
@@ -361,10 +393,42 @@ export default function App() {
         let notImplemented = false;
         let gotResult = false;
 
+        const processBlock = (block) => {
+          let evt = "message";
+          let data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (!data) return;
+          try {
+            const parsed = JSON.parse(data);
+            if (evt === "channel_A" || parsed.channel === "A") {
+              append(id, "streamA", parsed.token || "");
+            } else if (evt === "channel_B" || parsed.channel === "B") {
+              append(id, "streamB", parsed.token || "");
+            } else if (evt === "audit_result") {
+              gotResult = true;
+              patch(id, { metrics: parsed, merkleRoot: parsed.merkle_root, done: true });
+            }
+          } catch {
+            /* ignore malformed partial JSON */
+          }
+        };
+
         while (true) {
           const { value, done } = await reader.read();
-          if (done || !alive()) break;
-          buffer += decoder.decode(value, { stream: true });
+          if (!alive()) break;
+          if (done) {
+            buffer += decoder.decode();
+            if (buffer.trim()) {
+              for (const b of buffer.replace(/\r\n/g, "\n").split("\n\n")) {
+                if (b.trim()) processBlock(b);
+              }
+            }
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
           if (buffer.includes("event: not_implemented")) {
             notImplemented = true;
             break;
@@ -372,20 +436,7 @@ export default function App() {
           const blocks = buffer.split("\n\n");
           buffer = blocks.pop() || "";
           for (const block of blocks) {
-            let evt = "message";
-            let data = "";
-            for (const line of block.split("\n")) {
-              if (line.startsWith("event:")) evt = line.slice(6).trim();
-              if (line.startsWith("data:")) data += line.slice(5).trim();
-            }
-            if (!data) continue;
-            const parsed = JSON.parse(data);
-            if (evt === "channel_A" || parsed.channel === "A") append(id, "streamA", parsed.token || "");
-            else if (evt === "channel_B" || parsed.channel === "B") append(id, "streamB", parsed.token || "");
-            else if (evt === "audit_result") {
-              gotResult = true;
-              patch(id, { metrics: parsed, merkleRoot: parsed.merkle_root, done: true });
-            }
+            processBlock(block);
           }
         }
 
@@ -559,29 +610,41 @@ export default function App() {
               {apiMode === "LIVE" ? "Live API" : apiMode === "CHECKING" ? "Connecting" : "Demo preview"}
             </span>
 
+            {/* Model Selector Dropdown populated from GET /api/models */}
             <div
-              role="group"
-              aria-label="Engine mode"
-              className="inline-flex items-center rounded-full bg-[#163660] border border-[#ae9142]/50 p-0.5 text-xs"
+              className="inline-flex items-center gap-2 rounded-full bg-[#163660] border border-[#ae9142]/60 px-3 py-1 text-xs"
+              title={
+                ollamaConnected
+                  ? "Ollama connected on localhost:11434"
+                  : "Ollama not detected on localhost:11434 (select simulated-adversarial-vendor or start ollama serve)"
+              }
             >
-              {[
-                { id: "mock", label: "Simulated" },
-                { id: "ollama", label: "Local Ollama" },
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setEngineMode(id)}
-                  aria-pressed={engineMode === id}
-                  className={`px-3 py-1 rounded-full font-medium transition-colors ${
-                    engineMode === id
-                      ? "bg-[#ae9142] text-[#0c2340]"
-                      : "text-[#f8f4ec]/85 hover:text-[#d39f10]"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  ollamaConnected && selectedModel !== "simulated-adversarial-vendor"
+                    ? "bg-[#0a843d]"
+                    : "bg-[#d39f10]"
+                }`}
+              />
+              <Cpu className="w-3.5 h-3.5 text-[#d39f10] shrink-0" />
+              <select
+                aria-label="Select local model"
+                value={selectedModel}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  setSelectedModel(m);
+                  setEngineMode(m === "simulated-adversarial-vendor" ? "mock" : "ollama");
+                }}
+                className="bg-transparent font-mono text-xs font-medium text-[#f8f4ec] focus:outline-none cursor-pointer"
+              >
+                {availableModels.map((m) => (
+                  <option key={m} value={m} className="bg-[#0c2340] text-[#f8f4ec]">
+                    {m === "simulated-adversarial-vendor"
+                      ? "simulated-adversarial-vendor (fallback)"
+                      : `${m} (Ollama)`}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -612,6 +675,7 @@ export default function App() {
               onSend={() => runAudit(input)}
               disabled={busy}
               engineMode={engineMode}
+              selectedModel={selectedModel}
             />
 
             <div className="mt-5">
@@ -724,6 +788,7 @@ export default function App() {
                 onSend={() => runAudit(input)}
                 disabled={busy}
                 engineMode={engineMode}
+                selectedModel={selectedModel}
                 compact
               />
               <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />

@@ -28,6 +28,7 @@ from backend.schemas import (
     CamouflageResponse,
     CasesResponse,
     ChannelRequest,
+    ModelsResponse,
     TamperTestResponse,
 )
 
@@ -99,6 +100,18 @@ async def health() -> dict[str, object]:
     }
 
 
+@app.get("/api/models", response_model=ModelsResponse)
+async def get_models() -> ModelsResponse:
+    """Query local Ollama `/api/tags` and return available models + simulated fallback."""
+    connected, models = await app.state.proxy.discover_models()
+    default_model = models[0] if models else "qwen2.5:7b"
+    return ModelsResponse(
+        ollama_connected=connected,
+        models=models,
+        default_model=default_model,
+    )
+
+
 @app.get("/api/cases", response_model=CasesResponse)
 async def get_cases() -> CasesResponse:
     """Return curated demo cases and precomputed 2D PCA calibration points."""
@@ -125,13 +138,19 @@ async def camouflage_prompt(payload: CamouflageRequest) -> CamouflageResponse:
 @app.post("/api/audit/stream")
 async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
     """Execute concurrent Channel A/B audit and stream SSE tokens + final verdict."""
+    effective_mode = (
+        "mock"
+        if payload.model_name == "simulated-adversarial-vendor" or payload.engine_mode == "mock"
+        else "ollama"
+    )
     req_a = ChannelRequest(
         prompt=payload.prompt_A,
         deployment_context=payload.deployment_context_A,
         seed=payload.seed,
         temperature=payload.temperature,
         max_tokens=160,
-        engine_mode=payload.engine_mode,
+        engine_mode=effective_mode,
+        model_name=payload.model_name,
     )
     req_b = ChannelRequest(
         prompt=payload.prompt_B,
@@ -139,7 +158,8 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
         seed=payload.seed,
         temperature=payload.temperature,
         max_tokens=160,
-        engine_mode=payload.engine_mode,
+        engine_mode=effective_mode,
+        model_name=payload.model_name,
     )
 
     async def event_generator() -> AsyncIterator[str]:
@@ -149,7 +169,7 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
         async for item in app.state.proxy.run_dual_channel(
             req_a=req_a,
             req_b=req_b,
-            engine_mode=payload.engine_mode,
+            engine_mode=effective_mode,
         ):
             if isinstance(item, ChannelStreamChunk):
                 event_name = f"channel_{item.channel}"

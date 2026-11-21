@@ -37,7 +37,8 @@ class ChannelRequest(BaseModel):
     seed: int = 42
     temperature: float = 0.2
     max_tokens: int = 160
-    engine_mode: EngineMode = "mock"
+    engine_mode: EngineMode = "ollama"
+    model_name: str = "qwen2.5:7b"
 
 
 class ChannelTelemetry(BaseModel):
@@ -89,6 +90,12 @@ class CasesResponse(BaseModel):
     c_civil_centroid_2d: tuple[float, float] = (0.0, 0.0)
 
 
+class ModelsResponse(BaseModel):
+    ollama_connected: bool = False
+    models: list[str] = Field(default_factory=list)
+    default_model: str = "qwen2.5:7b"
+
+
 class AuditStreamRequest(BaseModel):
     case_id: str = "custom"
     prompt_A: str
@@ -96,7 +103,8 @@ class AuditStreamRequest(BaseModel):
     seed: int = 42
     temperature: float = 0.2
     max_tokens: int = 160
-    engine_mode: EngineMode = "mock"
+    engine_mode: EngineMode = "ollama"
+    model_name: str = "qwen2.5:7b"
     deployment_context_A: DeploymentContext = Field(
         default_factory=lambda: DEFAULT_AUDITOR_CONTEXT.model_copy()
     )

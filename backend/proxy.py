@@ -16,6 +16,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 import json
+import logging
 import os
 import random
 import time
@@ -24,6 +25,10 @@ import uuid
 import httpx
 
 from backend.schemas import ChannelRequest, DeploymentContext, EngineMode
+
+
+logger = logging.getLogger("aegis.proxy")
+SIMULATED_VENDOR_MODEL = "simulated-adversarial-vendor"
 
 
 @dataclass
@@ -59,21 +64,46 @@ class DualChannelProxy:
         self.ollama_url = ollama_url or os.getenv(
             "OLLAMA_BASE_URL", "http://localhost:11434/v1/chat/completions"
         )
+        self.ollama_tags_url = os.getenv(
+            "OLLAMA_TAGS_URL", "http://localhost:11434/api/tags"
+        )
         self.ollama_model = ollama_model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
     @staticmethod
     def build_isolated_client(channel: str) -> httpx.AsyncClient:
-        """Create an isolated AsyncClient with zero shared cookies or connection pools."""
+        """Create an isolated AsyncClient with a 90s read timeout for local CPU inference."""
         user_agent = (
             "AEGIS-Auditor-Harness/4.0"
             if channel == "A"
             else "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ConsumerWebClient/1.0"
         )
         return httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0, connect=5.0),
+            timeout=httpx.Timeout(90.0, connect=5.0),
             headers={"User-Agent": user_agent},
             limits=httpx.Limits(max_connections=4, max_keepalive_connections=0),
         )
+
+    async def discover_models(self) -> tuple[bool, list[str]]:
+        """Query `http://localhost:11434/api/tags` for installed local Ollama models."""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(2.5, connect=1.5)) as client:
+                resp = await client.get(self.ollama_tags_url)
+                resp.raise_for_status()
+                payload = resp.json()
+                raw_models = payload.get("models") or []
+                names = [
+                    str(item.get("name")).strip()
+                    for item in raw_models
+                    if isinstance(item, dict) and item.get("name")
+                ]
+                if not names:
+                    names = [self.ollama_model]
+                if SIMULATED_VENDOR_MODEL not in names:
+                    names.append(SIMULATED_VENDOR_MODEL)
+                return True, names
+        except Exception as exc:
+            logger.warning("Local Ollama not reachable on %s: %s", self.ollama_tags_url, exc)
+            return False, [self.ollama_model, SIMULATED_VENDOR_MODEL]
 
     @staticmethod
     def prepend_anti_cache_nonce(prompt: str) -> str:
@@ -92,23 +122,24 @@ class DualChannelProxy:
             f"user_role: {ctx.user_role}"
         )
 
-    def _resolve_target(self, engine_mode: EngineMode) -> tuple[str, str]:
-        if engine_mode == "ollama":
-            return self.ollama_url, self.ollama_model
-        return self.mock_url, "aegis-sim-v1"
+    def _resolve_target(self, request: ChannelRequest, engine_mode: EngineMode) -> tuple[str, str]:
+        chosen_model = (request.model_name or self.ollama_model).strip()
+        if engine_mode == "mock" or chosen_model == SIMULATED_VENDOR_MODEL:
+            return self.mock_url, "aegis-sim-v1"
+        return self.ollama_url, chosen_model
 
     async def stream_channel(
         self,
         channel: str,
         request: ChannelRequest,
-        engine_mode: EngineMode = "mock",
+        engine_mode: EngineMode = "ollama",
         jitter_s: float = 0.0,
     ) -> AsyncIterator[ChannelStreamChunk | ChannelRunSummary]:
         """Stream SSE tokens from one isolated channel and emit a final ChannelRunSummary."""
         if jitter_s > 0.0:
             await asyncio.sleep(jitter_s)
 
-        target_url, model_name = self._resolve_target(engine_mode)
+        target_url, model_name = self._resolve_target(request, engine_mode)
         nonce_prompt = self.prepend_anti_cache_nonce(request.prompt)
         ctx_json = request.deployment_context.model_dump_json()
 
@@ -144,12 +175,23 @@ class DualChannelProxy:
                 async with client.stream(
                     "POST", target_url, json=body, headers=headers
                 ) as response:
-                    response.raise_for_status()
+                    if response.status_code >= 400:
+                        err_body = (await response.aread()).decode("utf-8", errors="replace")
+                        raise RuntimeError(
+                            f"HTTP {response.status_code} from {target_url} (model={model_name}): {err_body[:240]}"
+                        )
+
                     async for raw_line in response.aiter_lines():
                         line = raw_line.strip()
-                        if not line or not line.startswith("data:"):
+                        if not line:
                             continue
-                        data_str = line[5:].strip()
+                        if line.startswith("data:"):
+                            data_str = line[5:].strip()
+                        elif line.startswith("{"):
+                            data_str = line
+                        else:
+                            continue
+
                         if data_str == "[DONE]":
                             break
 
@@ -159,10 +201,12 @@ class DualChannelProxy:
                             continue
 
                         choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta") or {}
-                        token = delta.get("content")
+                        delta = (choices[0].get("delta") or {}) if choices else {}
+                        token = (
+                            delta.get("content")
+                            or (chunk.get("message") or {}).get("content")
+                            or ""
+                        )
                         if not token:
                             continue
 
@@ -184,7 +228,18 @@ class DualChannelProxy:
                         )
             except Exception as exc:
                 elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000.0
-                err_text = f"[Channel {channel} error: {exc}]"
+                logger.error(
+                    "Channel %s stream failed against %s (model=%s): %s",
+                    channel,
+                    target_url,
+                    model_name,
+                    exc,
+                )
+                err_text = (
+                    f"[Channel {channel} connection error ({target_url}, model='{model_name}'): {exc}. "
+                    "Ensure `ollama serve` is running on port 11434 with the selected model pulled, "
+                    "or switch the header dropdown to `simulated-adversarial-vendor`.]"
+                )
                 yield ChannelStreamChunk(
                     channel=channel,
                     token=err_text,
@@ -212,12 +267,11 @@ class DualChannelProxy:
         self,
         req_a: ChannelRequest,
         req_b: ChannelRequest,
-        engine_mode: EngineMode = "mock",
+        engine_mode: EngineMode = "ollama",
     ) -> AsyncIterator[ChannelStreamChunk | tuple[ChannelRunSummary, ChannelRunSummary]]:
         """Dispatch Channel A and Channel B concurrently via asyncio and stream live chunks."""
         queue: asyncio.Queue[ChannelStreamChunk | ChannelRunSummary | None] = asyncio.Queue()
 
-        # Subtle stochastic arrival jitter on one channel (applied before monotonic clock starts)
         jitter_min = float(os.getenv("PROXY_JITTER_MIN_MS", "5")) / 1000.0
         jitter_max = float(os.getenv("PROXY_JITTER_MAX_MS", "20")) / 1000.0
         jitter_b = random.uniform(max(0.0, jitter_min), max(jitter_min, jitter_max))
