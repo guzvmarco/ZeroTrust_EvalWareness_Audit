@@ -113,13 +113,16 @@ npm install --prefix frontend
 
 </details>
 
-### 3. Configure Environment Variables
+### 3. Configure API Keys (Optional `.env` — Or Enter Directly in the UI)
 
-Copy `.env.example` to `.env` and add your Groq API key (optional if using local Ollama or entering the key in the UI's **Runtime & Host Settings** drawer):
+You do **not** have to put API keys in `.env`: you can enter your **Host / Base URL**, **Model ID**, and **API Key** directly inside the **Runtime & Host Settings** drawer in the web console (supporting Groq, Cloudflare Workers AI, OpenRouter, OpenAI-compatible endpoints, or local Ollama).
+
+- **Local-Only Privacy:** Everything runs 100% locally on your own computer. API keys entered in the UI are held only in memory for your active requests—they are **never sent to any external database, never persisted to disk, and strictly `[REDACTED]`** in exported `audit_dossier.json` files.
+- **Optional `.env` setup** (if you prefer pre-loading keys at startup):
 
 ```bash
 cp .env.example .env
-# Edit .env and set:
+# Edit .env and set whichever provider key you use:
 # GROQ_API_KEY=gsk_your_key_here
 ```
 
