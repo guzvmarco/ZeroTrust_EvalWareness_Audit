@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -31,6 +31,18 @@ import {
 } from "./demoData.js";
 
 const ZERO_HASH = "0".repeat(64);
+const GROQ_MODELS = [
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+];
+
+function resolveEngineMode(modelName) {
+  const m = (modelName || "").trim();
+  if (m === "simulated-adversarial-vendor") return "mock";
+  if (m.startsWith("openai/") || m.startsWith("qwen/")) return "groq";
+  return "ollama";
+}
 // Calibrated CDI_risk formula subtitle: 0.65·Δρ + 0.35·D_sem + τ_guardrail
 
 const DEFAULT_SUITE_SUMMARY_FALLBACK = {
@@ -132,6 +144,13 @@ const ROW_BADGE = {
     border: "border-[#0a843d]/35",
     Icon: ShieldCheck,
   },
+  API_ERROR: {
+    label: "API ERROR",
+    bg: "bg-[#fee2e2]",
+    text: "text-[#991b1b]",
+    border: "border-[#991b1b]/30",
+    Icon: AlertTriangle,
+  },
 };
 
 /** Compact batch runner card matching the classic Composer footprint. */
@@ -145,12 +164,18 @@ function EvaluationSetupPanel({
   batchProgress,
   engineMode,
   selectedModel = "qwen2.5:7b",
+  groqApiKey = "",
+  onChangeGroqApiKey,
+  groqConfigured = false,
 }) {
-  const isSimulated =
-    engineMode === "mock" || selectedModel === "simulated-adversarial-vendor";
+  const effectiveMode = resolveEngineMode(selectedModel) || engineMode;
+  const isSimulated = effectiveMode === "mock";
+  const isGroq = effectiveMode === "groq";
   const targetLabel = isSimulated
     ? "Simulated Vendor Endpoint · localhost:8001"
-    : `Live Model: ${selectedModel} via localhost:11434`;
+    : isGroq
+      ? `Groq Cloud: ${selectedModel} via api.groq.com`
+      : `Live Model: ${selectedModel} via 127.0.0.1:11434`;
 
   return (
     <div className="rounded-2xl bg-white border border-[#dfd7c5] shadow-sm p-4 space-y-3 text-left">
@@ -346,13 +371,16 @@ function EvidenceDrawer({ children }) {
 }
 
 export default function App() {
-  const [engineMode, setEngineMode] = useState("ollama"); // "ollama" | "mock"
-  const [selectedModel, setSelectedModel] = useState("qwen2.5:7b");
+  const [engineMode, setEngineMode] = useState("groq"); // "ollama" | "groq" | "mock"
+  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
   const [availableModels, setAvailableModels] = useState([
+    ...GROQ_MODELS,
     "qwen2.5:7b",
     "simulated-adversarial-vendor",
   ]);
   const [ollamaConnected, setOllamaConnected] = useState(false);
+  const [groqConfigured, setGroqConfigured] = useState(false);
+  const [groqApiKey, setGroqApiKey] = useState("");
 
   const [batchSize, setBatchSize] = useState(9);
   const [metadataLayers, setMetadataLayers] = useState({
@@ -413,14 +441,21 @@ export default function App() {
         if (modelsRes && modelsRes.ok && mounted) {
           const mData = await modelsRes.json();
           if (Array.isArray(mData.models) && mData.models.length > 0) {
-            setAvailableModels(mData.models);
-            const preferred = mData.default_model || mData.models[0];
+            const merged = [...mData.models];
+            for (const gm of GROQ_MODELS) {
+              if (!merged.includes(gm)) {
+                const simIdx = merged.indexOf("simulated-adversarial-vendor");
+                if (simIdx >= 0) merged.splice(simIdx, 0, gm);
+                else merged.push(gm);
+              }
+            }
+            setAvailableModels(merged);
+            const preferred = mData.default_model || merged[0];
             setSelectedModel(preferred);
-            setEngineMode(
-              preferred === "simulated-adversarial-vendor" ? "mock" : "ollama"
-            );
+            setEngineMode(resolveEngineMode(preferred));
           }
           setOllamaConnected(Boolean(mData.ollama_connected));
+          setGroqConfigured(Boolean(mData.groq_configured));
         }
         if (!casesRes.ok) {
           if (mounted) setApiMode("DEMO_PREVIEW");
@@ -521,8 +556,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           batch_size: batchSize,
-          engine_mode:
-            selectedModel === "simulated-adversarial-vendor" ? "mock" : engineMode,
+          engine_mode: resolveEngineMode(selectedModel),
+          provider: resolveEngineMode(selectedModel),
+          api_key: groqApiKey.trim() || undefined,
           model_name: selectedModel,
           metadata_layers: metadataLayers,
         }),
@@ -657,8 +693,9 @@ export default function App() {
           seed: 42,
           temperature: 0.2,
           max_tokens: 160,
-          engine_mode:
-            selectedModel === "simulated-adversarial-vendor" ? "mock" : engineMode,
+          engine_mode: resolveEngineMode(selectedModel),
+          provider: resolveEngineMode(selectedModel),
+          api_key: groqApiKey.trim() || undefined,
           model_name: selectedModel,
           metadata_layers: metadataLayers,
           deployment_context_A: DEFAULT_AUDITOR_CTX,
@@ -1010,19 +1047,21 @@ export default function App() {
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  ollamaConnected && selectedModel !== "simulated-adversarial-vendor"
+                  (resolveEngineMode(selectedModel) === "ollama" && ollamaConnected) ||
+                  (resolveEngineMode(selectedModel) === "groq" &&
+                    (groqConfigured || groqApiKey.trim().length > 0))
                     ? "bg-[#0a843d]"
                     : "bg-[#d39f10]"
                 }`}
               />
               <Cpu className="w-3.5 h-3.5 text-[#d39f10] shrink-0" />
               <select
-                aria-label="Select local model"
+                aria-label="Select model"
                 value={selectedModel}
                 onChange={(e) => {
                   const m = e.target.value;
                   setSelectedModel(m);
-                  setEngineMode(m === "simulated-adversarial-vendor" ? "mock" : "ollama");
+                  setEngineMode(resolveEngineMode(m));
                 }}
                 className="bg-transparent font-mono text-xs font-medium text-[#f8f4ec] focus:outline-none cursor-pointer"
               >
@@ -1030,7 +1069,9 @@ export default function App() {
                   <option key={m} value={m} className="bg-[#0c2340] text-[#f8f4ec]">
                     {m === "simulated-adversarial-vendor"
                       ? "simulated-adversarial-vendor (fallback)"
-                      : `${m} (Ollama)`}
+                      : resolveEngineMode(m) === "groq"
+                        ? `${m} (Groq)`
+                        : `${m} (Ollama)`}
                   </option>
                 ))}
               </select>
@@ -1069,6 +1110,9 @@ export default function App() {
               batchProgress={batchProgress}
               engineMode={engineMode}
               selectedModel={selectedModel}
+              groqApiKey={groqApiKey}
+              onChangeGroqApiKey={setGroqApiKey}
+              groqConfigured={groqConfigured}
             />
 
             {/* Inline Batch Summary & Clickable Results List */}

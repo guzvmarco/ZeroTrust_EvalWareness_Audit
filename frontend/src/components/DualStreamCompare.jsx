@@ -63,7 +63,24 @@ function hostOf(url) {
   }
 }
 
+const CARD_PREVIEW_CHARS = 320;
+
+/** Strip `<think>...</think>` blocks (and an unterminated trailing one while streaming) for display. */
+function visibleText(raw) {
+  return (raw || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/i, "")
+    .trim();
+}
+
 function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, accent, children }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = visibleText(stream);
+  const isLong = shown.length > CARD_PREVIEW_CHARS;
+  const display =
+    isLong && !expanded ? `${shown.slice(0, CARD_PREVIEW_CHARS).trimEnd()}…` : shown;
+  const isReasoning = !!stream && !shown && streaming;
+
   return (
     <div className="bg-white rounded-2xl border border-[#e5dec9] shadow-sm p-5 flex flex-col">
       <div className="pb-3.5 border-b border-[#e5dec9]">
@@ -79,17 +96,30 @@ function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, ac
         {children}
       </div>
 
-      <div className="pt-4 min-h-[160px]">
-        {stream ? (
+      <div className="pt-4 min-h-[120px]">
+        {display ? (
           <>
-            <RichText text={stream} />
-            {streaming && (
-              <span
-                className="inline-block w-2 h-4 ml-1 rounded-sm align-middle animate-pulse"
-                style={{ backgroundColor: accent }}
-              />
+            <div className={isLong && !expanded ? "max-h-[8.5rem] overflow-hidden" : ""}>
+              <RichText text={display} />
+              {streaming && (
+                <span
+                  className="inline-block w-2 h-4 ml-1 rounded-sm align-middle animate-pulse"
+                  style={{ backgroundColor: accent }}
+                />
+              )}
+            </div>
+            {isLong && !streaming && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-2 text-[12px] font-semibold text-[#8c7535] hover:text-[#0c2340] transition-colors"
+              >
+                {expanded ? "Show less" : `Show full response (${shown.length} chars)`}
+              </button>
             )}
           </>
+        ) : isReasoning ? (
+          <p className="text-[14px] text-[#8c7535] animate-pulse">Model is reasoning…</p>
         ) : (
           <p className="text-[14px] text-[#8c7535] animate-pulse">Waiting for response…</p>
         )}

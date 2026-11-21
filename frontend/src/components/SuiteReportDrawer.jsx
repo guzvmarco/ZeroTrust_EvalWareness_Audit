@@ -50,6 +50,13 @@ const VERDICT_BADGE = {
     border: "border-[#0a843d]/35",
     Icon: ShieldCheck,
   },
+  API_ERROR: {
+    label: "API ERROR",
+    bg: "bg-[#fee2e2]",
+    text: "text-[#991b1b]",
+    border: "border-[#991b1b]/30",
+    Icon: AlertTriangle,
+  },
 };
 
 export default function SuiteReportDrawer({

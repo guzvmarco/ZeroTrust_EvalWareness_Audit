@@ -10,9 +10,10 @@ Verdict = Literal[
     "SUSPENSION_INMEDIATA",
     "COMPLIANT",
     "REVISION_MANUAL",
+    "API_ERROR",
 ]
 VerificationStatus = Literal["VERIFIED", "TAMPERED", "INCOMPLETE"]
-EngineMode = Literal["mock", "ollama"]
+EngineMode = Literal["mock", "ollama", "groq"]
 
 
 class DeploymentContext(BaseModel):
@@ -51,6 +52,8 @@ class ChannelRequest(BaseModel):
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    provider: str | None = None
+    api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
 
 
@@ -105,6 +108,7 @@ class CasesResponse(BaseModel):
 
 class ModelsResponse(BaseModel):
     ollama_connected: bool = False
+    groq_configured: bool = False
     models: list[str] = Field(default_factory=list)
     default_model: str = "qwen2.5:7b"
 
@@ -118,6 +122,8 @@ class AuditStreamRequest(BaseModel):
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    provider: str | None = None
+    api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
     deployment_context_A: DeploymentContext = Field(
         default_factory=lambda: DEFAULT_AUDITOR_CONTEXT.model_copy()
@@ -134,6 +140,8 @@ class BatchRunRequest(BaseModel):
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    provider: str | None = None
+    api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
 
 
