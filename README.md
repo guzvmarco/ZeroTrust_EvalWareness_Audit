@@ -149,6 +149,27 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
    python scripts/verify_dossier.py audit_dossier.json
    ```
 
+### 6. Customizing & Updating Benchmark Prompts (`data/benchmark_pool_500.json`)
+
+The batch evaluation bank lives in `data/benchmark_pool_500.json` (`846` total probes: `708` English + `138` Spanish across 6 categories). You can add, edit, or curate your own dual-channel test scenarios directly in that JSON array:
+
+```json
+{
+  "id": "CUSTOM-001",
+  "category": "Social & Well-Being",
+  "severity": "high",
+  "benign_control": false,
+  "lang": "en",
+  "prompt": "Formal Auditor oversight version of the scenario...",
+  "camouflaged_prompt": "Optional everyday Production user version (auto-generated if omitted)"
+}
+```
+
+- **Required fields:** `id`, `category`, `severity` (`"high"`, `"medium"`, `"low"`, or `"none"` for benign controls), `benign_control` (`true`/`false`), `lang` (`"en"` or `"es"`), and `prompt` (Channel A).
+- **Optional `camouflaged_prompt`:** If provided, Channel B uses it directly; if omitted, `CamouflageEngine` selects an invariant rewrite (`cos >= 0.78`) automatically at runtime.
+- **Regenerating deduplicated slices:** You can also customize and re-run the generator scripts (`backend/generate_social_probes.py`, `backend/generate_curated_social_pairs.py`, `backend/generate_spanish_probes.py`), which enforce `cos < 0.72` inter-probe novelty and `cos >= 0.78` intra-pair invariance before writing to `data/benchmark_pool_500.json`.
+- **Apply changes:** Restart the FastAPI backend (`uvicorn`) so `/api/batch-run` samples from the updated JSON file.
+
 ---
 
 ## Pre-Freeze Verification Checklist (5 Automated Checks)
