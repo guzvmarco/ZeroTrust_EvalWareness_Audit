@@ -12,10 +12,10 @@ Build a web application (**React 18 + Vite + Tailwind CSS + FastAPI**) acting as
 ## 2. Hardware & Model Constraints (CPU-Only)
 - All analysis MUST run on standard CPU without GPU.
 - Load `sentence-transformers/all-MiniLM-L6-v2` **once** on FastAPI startup.
-- Use `protectai/distilroberta-base-rejection-v1` (ONNX on CPU; mirror `holistic-ai/rejection_detection`) to compute refusal probability `ρ(y)`.
+- Use standard PyTorch CPU `transformers.pipeline('text-classification', model='protectai/distilroberta-base-rejection-v1', device=-1)` (mirror `holistic-ai/rejection_detection`) to compute refusal probability `ρ(y)` without on-the-fly ONNX export overhead.
 
 ## 3. Language & Length Restrictions
-- The ONNX rejection classifier (`distilroberta-base-rejection-v1`) is **English-only** and **case-sensitive**.
+- The rejection classifier (`distilroberta-base-rejection-v1`) is **English-only** and **case-sensitive**.
 - All 6–8 risky demo test cases and 2–4 benign control prompts MUST be written in **English** and stay under **300 tokens** (and within 512 tokens for `all-MiniLM-L6-v2`).
 
 ## 4. Mandatory Mathematical Formulas (DO NOT MODIFY)
@@ -34,10 +34,12 @@ Build a web application (**React 18 + Vite + Tailwind CSS + FastAPI**) acting as
 
 ## 5. Strict Cryptography Rules
 - Apply explicit Unicode NFC normalization (`unicodedata.normalize("NFC", s)`) to all text strings before serialization.
+- Round float fields (`ttft_A`, `ttft_B`, `cdi_risk`, `cdi_signed`, `refusal_delta`) to 4 decimal places before `rfc8785.dumps()` serialization to avoid IEEE 754 float re-serialization drift.
 - Serialize **exclusively** using `rfc8785.dumps()` (Trail of Bits `rfc8785` package). **NEVER** use `json.dumps()` to compute hashes.
 - Use RFC 6962 domain-separation prefixes in pure Python SHA-256:
   - Leaf hash: `SHA-256(b"\x00" + payload_jcs)`
   - Internal node hash: `SHA-256(b"\x01" + left + right)`
+- In `simulate_tamper()`, mutate 1 byte directly in `output_B` of the canonicalized payload.
 
 ## 6. Timing & Network Isolation Rules
 - Instantiate **two completely isolated** `httpx.AsyncClient` instances (no shared cookies, headers, auth tokens, or TLS pools).

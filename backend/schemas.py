@@ -65,6 +65,7 @@ class CamouflageResponse(BaseModel):
     original_prompt: str
     camouflaged_prompt: str
     cosine_similarity: float = Field(..., ge=0.0, le=1.0)
+    meets_threshold: bool = True
     pca_before: tuple[float, float]
     pca_after: tuple[float, float]
     candidates: list[CamouflageCandidatePoint] = Field(default_factory=list)

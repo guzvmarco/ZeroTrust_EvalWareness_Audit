@@ -2,12 +2,16 @@
 
 Strict Cryptography Rules:
 - Normalize all text fields with `unicodedata.normalize("NFC", s)` before serialization.
+- Round float fields (`ttft_A`, `ttft_B`, `cdi_risk`, `cdi_signed`, `refusal_delta`)
+  to 4 decimal places before `rfc8785.dumps()` serialization to avoid IEEE 754 float
+  re-serialization drift.
 - Commit full `MerkleLeafPayload` including `max_tokens`, `deployment_context_A`,
   and `deployment_context_B` into the canonicalized leaf.
 - Serialize strictly with `rfc8785.dumps()` (Trail of Bits). NEVER use `json.dumps()` for hashing.
 - Pure-Python RFC 6962 Merkle Tree:
     Leaf = SHA-256(b"\\x00" + payload_jcs)
     Node = SHA-256(b"\\x01" + left + right)
+- In `simulate_tamper()`, mutate 1 byte directly in `output_B` of the canonicalized payload.
 """
 
 import hashlib
@@ -37,7 +41,7 @@ class MerkleLedger:
 
     @staticmethod
     def canonicalize_payload(payload: MerkleLeafPayload) -> bytes:
-        """Normalize payload to NFC and serialize with `rfc8785.dumps()`."""
+        """Normalize payload to NFC, round float fields (`ttft_A`, `ttft_B`, `cdi_risk`, `cdi_signed`, `refusal_delta`) to 4 decimals, and serialize with `rfc8785.dumps()`."""
         _ = payload
         raise NotImplementedError("RFC 8785 canonicalization will use rfc8785.dumps().")
 
@@ -65,5 +69,5 @@ class MerkleLedger:
         raise NotImplementedError("Dossier export not implemented yet.")
 
     def simulate_tamper(self) -> TamperTestResponse:
-        """Alter 1 character in `output_B` or `ttft_A` and return TAMPERED mismatch proof."""
+        """Mutate 1 byte directly in `output_B` of the canonicalized payload and return TAMPERED mismatch proof."""
         raise NotImplementedError("1-bit tamper simulation not implemented yet.")

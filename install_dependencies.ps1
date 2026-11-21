@@ -55,15 +55,13 @@ if ($PreloadModels) {
     Write-Host "==> [4/4] Pre-caching CPU models (all-MiniLM-L6-v2 & distilroberta-base-rejection-v1)..." -ForegroundColor Cyan
     & $venvPython -c @"
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer
-from optimum.onnxruntime import ORTModelForSequenceClassification
+from transformers import pipeline
 
 print('Downloading sentence-transformers/all-MiniLM-L6-v2...')
 SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', device='cpu')
 
 print('Downloading protectai/distilroberta-base-rejection-v1...')
-AutoTokenizer.from_pretrained('protectai/distilroberta-base-rejection-v1')
-ORTModelForSequenceClassification.from_pretrained('protectai/distilroberta-base-rejection-v1')
+pipeline('text-classification', model='protectai/distilroberta-base-rejection-v1', device=-1)
 print('All CPU models cached successfully.')
 "@
 } else {

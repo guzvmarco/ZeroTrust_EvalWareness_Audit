@@ -21,8 +21,6 @@ sentence-transformers>=3.0.0
 transformers>=4.44.0
 tokenizers>=0.20.0
 huggingface-hub>=0.25.0
-onnxruntime>=1.19.0
-optimum[onnxruntime]>=1.21.0
 numpy>=1.26.0
 scikit-learn>=1.5.0
 

@@ -35,7 +35,16 @@ class CamouflageEngine:
         """Return curated cases from `data/demo_cases.json` and 2D PCA calibration points."""
         raise NotImplementedError("Case loading and PCA point export not implemented yet.")
 
-    def select_camouflage(self, case_id: str, prompt: str) -> CamouflageResponse:
-        """Select optimal candidate (cos >= 0.78) and return 2D PCA before/after coordinates."""
+    def select_camouflage(
+        self,
+        case_id: str = "custom",
+        prompt: str = "",
+    ) -> CamouflageResponse:
+        """Select optimal candidate and return 2D PCA before/after coordinates.
+
+        When `case_id='custom'` (arbitrary live user input), dynamically generates
+        contextual paraphrases and returns the highest-scoring candidate gracefully
+        with `meets_threshold=(cosine >= 0.78)` without raising an error if `cosine < 0.78`.
+        """
         _ = (case_id, prompt)
         raise NotImplementedError("Semantic camouflage selection not implemented yet.")
