@@ -10,7 +10,7 @@ import {
   ReferenceArea,
   Customized,
 } from "recharts";
-import { CheckCircle2, AlertTriangle, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 
 function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
   if (!xAxisMap || !yAxisMap || !pcaBefore || !pcaAfter) return null;
@@ -30,7 +30,7 @@ function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
     <g>
       <defs>
         <marker id="nd-green-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-          <path d="M 0 1 L 7 4 L 0 7 z" fill="#0a843d" />
+          <path d="M 0 1 L 7 4 L 0 7 z" fill="#059669" />
         </marker>
       </defs>
 
@@ -39,36 +39,20 @@ function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
         y1={y1}
         x2={x2}
         y2={y2}
-        stroke="#0a843d"
+        stroke="#059669"
         strokeWidth="2"
-        strokeDasharray="5 3"
+        strokeDasharray="4 3"
         markerEnd="url(#nd-green-arrowhead)"
       />
 
-      <circle cx={x1} cy={y1} r={6} fill="#991b1b" stroke="#ffffff" strokeWidth="1.5" />
-      <text
-        x={x1}
-        y={y1 - 12}
-        textAnchor="middle"
-        fill="#991b1b"
-        fontSize="12"
-        fontWeight="600"
-        style={halo}
-      >
-        Original prompt
+      <circle cx={x1} cy={y1} r={5.5} fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
+      <text x={x1} y={y1 - 11} textAnchor="middle" fill="#dc2626" fontSize="11" fontWeight="600" style={halo}>
+        x (Formal)
       </text>
 
-      <circle cx={x2} cy={y2} r={7} fill="#0a843d" stroke="#ffffff" strokeWidth="2" />
-      <text
-        x={x2}
-        y={y2 - 13}
-        textAnchor="middle"
-        fill="#0a843d"
-        fontSize="12"
-        fontWeight="600"
-        style={halo}
-      >
-        Rewritten prompt
+      <circle cx={x2} cy={y2} r={6.5} fill="#059669" stroke="#ffffff" strokeWidth="2" />
+      <text x={x2} y={y2 - 12} textAnchor="middle" fill="#059669" fontSize="11" fontWeight="600" style={halo}>
+        x&apos; (Canary)
       </text>
     </g>
   );
@@ -79,14 +63,14 @@ function CustomScatterTooltip({ active, payload }) {
   const pt = payload[0]?.payload;
   if (!pt) return null;
   return (
-    <div className="bg-white rounded-xl border border-[#dfd7c5] shadow-sm px-3 py-2 text-xs max-w-xs">
-      <div className="font-semibold text-[#0c2340] mb-1">{pt.label || pt.group}</div>
+    <div className="bg-white rounded-md border border-zinc-200 px-3 py-2 text-xs max-w-xs">
+      <div className="font-semibold text-zinc-900 mb-0.5">{pt.label || pt.group}</div>
       {typeof pt.cosine === "number" && (
-        <div className="font-mono text-[11px] text-[#0a843d] mb-1">
+        <div className="font-mono tabular-nums text-[11px] text-emerald-700 mb-1">
           cos(e_x&apos;, e_x) = {pt.cosine.toFixed(3)}
         </div>
       )}
-      {pt.text && <div className="text-[12px] text-[#0c2340]/85 leading-snug">{pt.text}</div>}
+      {pt.text && <div className="text-[11px] text-zinc-600 leading-snug">{pt.text}</div>}
     </div>
   );
 }
@@ -97,16 +81,8 @@ export default function PcaScatterPlot({
   camouflageResult,
   frozenEntities = [],
 }) {
-  const evalData = evalPoints.map((pt, i) => ({
-    x: pt[0],
-    y: pt[1],
-    label: `Benchmark-style prompt #${i + 1}`,
-  }));
-  const civilData = civilPoints.map((pt, i) => ({
-    x: pt[0],
-    y: pt[1],
-    label: `Everyday-user prompt #${i + 1}`,
-  }));
+  const evalData = evalPoints.map((pt, i) => ({ x: pt[0], y: pt[1], label: `Eval Ref #${i + 1}` }));
+  const civilData = civilPoints.map((pt, i) => ({ x: pt[0], y: pt[1], label: `Civil Ref #${i + 1}` }));
   const candidateData = (camouflageResult?.candidates || []).map((c) => ({
     x: c.coords_2d[0],
     y: c.coords_2d[1],
@@ -119,54 +95,33 @@ export default function PcaScatterPlot({
   const pcaAfter = camouflageResult?.pca_after || [1.62, 0.42];
   const cosine = camouflageResult?.cosine_similarity ?? 0;
   const meetsThreshold = camouflageResult?.meets_threshold ?? cosine >= 0.78;
-
-  const axisTick = { fontSize: 11, fill: "#0c2340" };
+  const axisTick = { fontSize: 10, fill: "#52525b", fontFamily: "JetBrains Mono" };
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e5dec9] overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-[#e5dec9] bg-[#f8f4ec]/60 flex flex-wrap items-start justify-between gap-2">
+    <div className="bg-white rounded-md border border-zinc-200 overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-zinc-200 bg-zinc-50/70 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-sans text-[16px] font-bold tracking-tight text-[#0c2340]">
-            How the prompt was rewritten
+          <h3 className="text-xs font-semibold text-zinc-900">
+            2D PCA Semantic Trajectory (all-MiniLM-L6-v2)
           </h3>
-          <p className="text-[13px] text-[#0c2340]/70">
-            Same technical request, reworded to sound like an everyday user instead of a benchmark.
+          <p className="text-[11px] text-zinc-500">
+            Formal benchmark framing (c_eval) -&gt; organic user framing (c_civil)
           </p>
         </div>
-        <span
-          className={`text-[12px] font-semibold px-3 py-1 rounded-full border inline-flex items-center gap-1.5 ${
-            meetsThreshold
-              ? "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
-              : "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]/50"
-          }`}
-          title="Cosine similarity between the original and rewritten prompt embeddings (all-MiniLM-L6-v2)."
-        >
-          {meetsThreshold ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-          Same meaning · cos {cosine.toFixed(2)} {meetsThreshold ? "≥ 0.78" : "< 0.78"}
+
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono tabular-nums uppercase tracking-wider border border-zinc-200 bg-white rounded-md px-2 py-0.5 text-zinc-800">
+          <span className={`w-1.5 h-1.5 rounded-full ${meetsThreshold ? "bg-emerald-600" : "bg-amber-500"}`} />
+          cos {cosine.toFixed(3)} {meetsThreshold ? ">= 0.78" : "< 0.78"}
         </span>
       </div>
 
-      <div className="p-4">
-        <div className="h-72 w-full rounded-xl border border-[#e5dec9] bg-white overflow-hidden">
+      <div className="p-3">
+        <div className="h-64 w-full rounded-md border border-zinc-200 bg-white overflow-hidden">
           <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 12, right: 20, bottom: 8, left: -8 }}>
-              <CartesianGrid stroke="#edf2f9" strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="x"
-                domain={[-3.6, 3.6]}
-                tick={axisTick}
-                tickLine={{ stroke: "#e5dec9" }}
-                axisLine={{ stroke: "#e5dec9" }}
-              />
-              <YAxis
-                type="number"
-                dataKey="y"
-                domain={[-2.2, 2.2]}
-                tick={axisTick}
-                tickLine={{ stroke: "#e5dec9" }}
-                axisLine={{ stroke: "#e5dec9" }}
-              />
+            <ScatterChart margin={{ top: 12, right: 16, bottom: 8, left: -10 }}>
+              <CartesianGrid stroke="#f4f4f5" strokeDasharray="3 3" />
+              <XAxis type="number" dataKey="x" domain={[-3.6, 3.6]} tick={axisTick} tickLine={{ stroke: "#e4e4e7" }} axisLine={{ stroke: "#e4e4e7" }} />
+              <YAxis type="number" dataKey="y" domain={[-2.2, 2.2]} tick={axisTick} tickLine={{ stroke: "#e4e4e7" }} axisLine={{ stroke: "#e4e4e7" }} />
               <Tooltip content={<CustomScatterTooltip />} />
 
               <ReferenceArea
@@ -175,56 +130,37 @@ export default function PcaScatterPlot({
                 y1={-2.05}
                 y2={2.05}
                 fill="#fee2e2"
-                fillOpacity={0.35}
+                fillOpacity={0.3}
                 stroke="#fecaca"
-                label={{
-                  value: "Looks like a benchmark (c_eval)",
-                  position: "insideTop",
-                  fill: "#991b1b",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
+                label={{ value: "c_eval", position: "insideTop", fill: "#b91c1c", fontSize: 11, fontWeight: 600 }}
               />
               <ReferenceArea
                 x1={0.35}
                 x2={3.5}
                 y1={-2.05}
                 y2={2.05}
-                fill="#b3dac5"
-                fillOpacity={0.45}
-                stroke="#0a843d"
-                strokeOpacity={0.3}
-                label={{
-                  value: "Looks like a real user (c_civil)",
-                  position: "insideTop",
-                  fill: "#0a843d",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
+                fill="#d1fae5"
+                fillOpacity={0.35}
+                stroke="#a7f3d0"
+                label={{ value: "c_civil", position: "insideTop", fill: "#047857", fontSize: 11, fontWeight: 600 }}
               />
 
-              <Scatter name="Benchmark prompts" data={evalData} fill="#991b1b" opacity={0.4} />
-              <Scatter name="Everyday-user prompts" data={civilData} fill="#0a843d" opacity={0.45} />
-              <Scatter name="Candidates" data={candidateData} fill="#ae9142" opacity={0.85} />
-
-              <Customized
-                component={<TrajectoryArrowOverlay pcaBefore={pcaBefore} pcaAfter={pcaAfter} />}
-              />
+              <Scatter name="c_eval" data={evalData} fill="#dc2626" opacity={0.4} />
+              <Scatter name="c_civil" data={civilData} fill="#059669" opacity={0.45} />
+              <Scatter name="Candidates" data={candidateData} fill="#d97706" opacity={0.85} />
+              <Customized component={<TrajectoryArrowOverlay pcaBefore={pcaBefore} pcaAfter={pcaAfter} />} />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
 
         {frozenEntities.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] font-medium text-[#0c2340]/80 inline-flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5 text-[#ae9142]" />
-              Kept unchanged:
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 inline-flex items-center gap-1">
+              <Lock className="w-3 h-3 text-amber-600" />
+              Frozen Entities:
             </span>
             {frozenEntities.map((e) => (
-              <span
-                key={e}
-                className="font-mono text-[12px] px-2.5 py-0.5 rounded-full bg-[#f8f4ec] border border-[#e5dec9] text-[#0c2340]"
-              >
+              <span key={e} className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-zinc-50 border border-zinc-200 text-zinc-800">
                 {e}
               </span>
             ))}

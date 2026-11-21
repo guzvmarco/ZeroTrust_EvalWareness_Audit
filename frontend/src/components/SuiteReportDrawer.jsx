@@ -3,9 +3,6 @@ import {
   X,
   Copy,
   Check,
-  ShieldAlert,
-  ShieldCheck,
-  AlertTriangle,
   ArrowUpRight,
   Fingerprint,
   Download,
@@ -14,42 +11,12 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-const VERDICT_BADGE = {
-  SUSPENSION_INMEDIATA: {
-    label: "BLOCKED",
-    bg: "bg-[#fee2e2]",
-    text: "text-[#991b1b]",
-    border: "border-[#991b1b]/30",
-    Icon: ShieldAlert,
-  },
-  REVISION_MANUAL: {
-    label: "MANUAL REVIEW",
-    bg: "bg-[#efe9d9]",
-    text: "text-[#8c7535]",
-    border: "border-[#ae9142]/45",
-    Icon: AlertTriangle,
-  },
-  RESTRINGIDO: {
-    label: "MANUAL REVIEW",
-    bg: "bg-[#efe9d9]",
-    text: "text-[#8c7535]",
-    border: "border-[#ae9142]/45",
-    Icon: AlertTriangle,
-  },
-  COMPLIANT: {
-    label: "COMPLIANT",
-    bg: "bg-[#b3dac5]/50",
-    text: "text-[#0a843d]",
-    border: "border-[#0a843d]/35",
-    Icon: ShieldCheck,
-  },
-  APTO: {
-    label: "COMPLIANT",
-    bg: "bg-[#b3dac5]/50",
-    text: "text-[#0a843d]",
-    border: "border-[#0a843d]/35",
-    Icon: ShieldCheck,
-  },
+const VERDICT_TAG = {
+  SUSPENSION_INMEDIATA: { label: "BLOCKED", dot: "bg-red-600", text: "text-red-700" },
+  REVISION_MANUAL: { label: "REVIEW", dot: "bg-amber-500", text: "text-amber-700" },
+  RESTRINGIDO: { label: "REVIEW", dot: "bg-amber-500", text: "text-amber-700" },
+  COMPLIANT: { label: "COMPLIANT", dot: "bg-emerald-600", text: "text-emerald-700" },
+  APTO: { label: "COMPLIANT", dot: "bg-emerald-600", text: "text-emerald-700" },
 };
 
 export default function SuiteReportDrawer({
@@ -103,29 +70,23 @@ export default function SuiteReportDrawer({
     (summary.regressions_caught ?? 11) + (summary.manual_review_count ?? 8);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-[#0c2340]/45">
-      <div className="w-full max-w-4xl bg-[#f8f4ec] h-full flex flex-col border-l border-[#dfd7c5] shadow-xl overflow-hidden">
-        {/* Drawer Header */}
-        <div className="bg-[#0c2340] text-white px-6 py-4 border-b border-[#ae9142] flex items-center justify-between gap-3 shrink-0">
+    <div className="fixed inset-0 z-50 flex justify-end bg-zinc-950/40">
+      <div className="w-full max-w-4xl bg-zinc-50 h-full flex flex-col border-l border-zinc-200 overflow-hidden">
+        {/* Sharp Header */}
+        <div className="bg-[#0c2340] text-white px-5 py-3.5 border-b border-[#ae9142] flex items-center justify-between gap-3 shrink-0">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[11px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-[#991b1b] text-white">
-                CI/CD GATE: {summary.gate_status || "BLOCKED"}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono uppercase tracking-wider">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/10 text-red-300 border border-white/15">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                GATE: {summary.gate_status || "BLOCKED"}
               </span>
-              <span
-                className={`font-mono text-[11px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
-                  isDemoData
-                    ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
-                    : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
-                }`}
-              >
-                {isDemoData ? "DEMO DATA (PRELOADED)" : "LIVE EVALUATION"}
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/10 text-zinc-200 border border-white/15">
+                <span className={`w-1.5 h-1.5 rounded-full ${isDemoData ? "bg-amber-400" : "bg-emerald-400"}`} />
+                {isDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
               </span>
-              <span className="font-mono text-xs text-[#d39f10]">
-                Target: {summary.model_name || "qwen2.5:7b"}
-              </span>
+              <span className="text-[#d39f10]">target={summary.model_name || "qwen2.5:7b"}</span>
             </div>
-            <h2 className="text-lg font-bold tracking-tight text-white mt-1">
+            <h2 className="text-base font-semibold tracking-tight text-white mt-1">
               Integrity-Verifiable Evaluation Dossier ({summary.total_audited ?? items.length} of{" "}
               {summary.pool_total ?? 500} Bank Prompts)
             </h2>
@@ -134,80 +95,83 @@ export default function SuiteReportDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-[#c1cddd] hover:text-white hover:bg-white/10 transition-colors"
+            className="rounded-md p-1.5 text-zinc-300 hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Close suite report"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Drawer Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Top-Line Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-xl bg-white border border-[#e5dec9] p-3.5">
-              <div className="text-xs font-medium text-[#0c2340]/65">Total Evaluated</div>
-              <div className="text-2xl font-bold text-[#0c2340] mt-0.5">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Segmented Horizontal KPI Bar */}
+          <div className="rounded-md bg-white border border-zinc-200 grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200">
+            <div className="p-3.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+                Total Evaluated
+              </div>
+              <div className="text-xl font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
                 {summary.total_audited ?? items.length}
               </div>
-              <div className="text-[11px] font-mono text-[#8c7535] mt-0.5">
-                False Positives: {summary.false_positives_label || "0/10"}
+              <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
+                FP: {summary.false_positives_label || "0/10"}
               </div>
             </div>
 
-            <div className="rounded-xl bg-white border border-[#e5dec9] p-3.5">
-              <div className="text-xs font-medium text-[#0c2340]/65">
-                Refusal Rate (A vs. B)
+            <div className="p-3.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+                Refusal (A vs B)
               </div>
-              <div className="text-2xl font-bold text-[#0c2340] mt-0.5">
+              <div className="text-xl font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
                 {refusalA}% vs {refusalB}%
               </div>
-              <div className="text-[11px] font-mono text-[#8c7535] mt-0.5">
-                Auditor vs. Ordinary User
+              <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
+                Auditor vs Ordinary
               </div>
             </div>
 
-            <div className="rounded-xl bg-[#fee2e2]/65 border border-[#991b1b]/30 p-3.5">
-              <div className="text-xs font-medium text-[#991b1b]">Discrepancies Flagged</div>
-              <div className="text-2xl font-bold text-[#991b1b] mt-0.5">
+            <div className="p-3.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+                Discrepancies
+              </div>
+              <div className="text-xl font-semibold font-mono tabular-nums text-red-700 mt-0.5">
                 {discrepancies}
               </div>
-              <div className="text-[11px] font-mono text-[#991b1b]/80 mt-0.5">
+              <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
                 {summary.regressions_caught ?? 11} blocked · {summary.manual_review_count ?? 8} review
               </div>
             </div>
 
-            <div className="rounded-xl bg-white border border-[#e5dec9] p-3.5">
-              <div className="text-xs font-medium text-[#0c2340]/65">Mean Disparity (CDI)</div>
-              <div className="text-2xl font-bold text-[#0c2340] mt-0.5">
+            <div className="p-3.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+                Mean CDI
+              </div>
+              <div className="text-xl font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
                 {Number(summary.mean_cdi ?? 0.44).toFixed(2)}
               </div>
-              <div className="text-[11px] font-mono text-[#8c7535] mt-0.5">
+              <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
                 0.65·Δρ + 0.35·D_sem + τ
               </div>
             </div>
           </div>
 
-          {/* Batch Merkle Root & Integrity-Verifiable Evaluation Dossier Bar */}
-          <div className="rounded-2xl bg-[#efe9d9]/80 border border-[#e5dec9] p-4 space-y-3">
+          {/* Merkle Root & Dossier Controls */}
+          <div className="rounded-md bg-white border border-zinc-200 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-xs font-semibold text-[#8c7535]">
-                  <Fingerprint className="w-4 h-4 text-[#ae9142]" />
-                  <span>
-                    Batch RFC 8785 + RFC 6962 SHA-256 Merkle Root ({summary.total_audited ?? items.length} Leaves)
-                  </span>
+                <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+                  <Fingerprint className="w-3.5 h-3.5 text-[#ae9142]" />
+                  <span>Batch SHA-256 Merkle Root ({summary.total_audited ?? items.length} leaves)</span>
                 </div>
                 <div
-                  className={`font-mono text-xs truncate mt-0.5 ${
-                    isTampered ? "text-[#991b1b] line-through" : "text-[#0c2340]"
+                  className={`font-mono tabular-nums text-xs truncate mt-0.5 ${
+                    isTampered ? "text-red-700 line-through" : "text-zinc-900"
                   }`}
                 >
                   {summary.merkle_root}
                 </div>
                 {isTampered && (
-                  <div className="font-mono text-xs text-[#991b1b] truncate mt-0.5">
-                    Tampered Root: {batchTamperState.computed_root} ({batchTamperState.tampered_field})
+                  <div className="font-mono tabular-nums text-xs text-red-700 truncate mt-0.5">
+                    Tampered: {batchTamperState.computed_root} ({batchTamperState.tampered_field})
                   </div>
                 )}
               </div>
@@ -215,27 +179,27 @@ export default function SuiteReportDrawer({
               <button
                 type="button"
                 onClick={handleCopyRoot}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white hover:bg-[#edf2f9] text-[#0c2340] border border-[#dfd7c5] px-3.5 py-1.5 text-xs font-semibold transition-colors"
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border border-zinc-200 px-3 py-1.5 text-xs font-medium"
               >
                 {copiedRoot ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-[#0a843d]" />
-                    <span className="text-[#0a843d]">Copied Root</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">Copied</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3.5 h-3.5 text-[#ae9142]" />
-                    <span>Copy Merkle Root</span>
+                    <Copy className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Copy Root</span>
                   </>
                 )}
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#e5dec9]">
+            <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-zinc-200">
               <button
                 type="button"
                 onClick={onExportDossier}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0c2340] text-[#d39f10] border border-[#ae9142] hover:bg-[#163660] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-[#0c2340] text-[#d39f10] hover:bg-[#163660]"
               >
                 <Download className="w-3.5 h-3.5" />
                 Integrity-Verifiable Evaluation Dossier (JSON)
@@ -244,105 +208,80 @@ export default function SuiteReportDrawer({
               <button
                 type="button"
                 onClick={onVerifyBatchIntegrity}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#0a843d] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white text-zinc-800 border border-zinc-200 hover:border-zinc-400"
               >
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#0a843d]" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                 Verify Integrity
               </button>
 
               <button
                 type="button"
                 onClick={onSimulateBatchTamper}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#991b1b] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white text-zinc-800 border border-zinc-200 hover:border-red-400"
               >
-                <FlaskConical className="w-3.5 h-3.5 text-[#ae9142]" />
+                <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
                 Simulate Record Tampering
               </button>
 
-              <span
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                  isTampered
-                    ? "bg-[#991b1b] text-white border-[#991b1b]"
-                    : "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
-                }`}
-              >
-                {isTampered ? "TAMPERED" : "VERIFIED"}
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-200 bg-zinc-50 text-[11px] font-mono uppercase tracking-wider">
+                <span className={`w-1.5 h-1.5 rounded-full ${isTampered ? "bg-red-600" : "bg-emerald-600"}`} />
+                <span className={isTampered ? "text-red-700 font-semibold" : "text-emerald-700 font-semibold"}>
+                  {isTampered ? "TAMPERED" : "VERIFIED"}
+                </span>
               </span>
             </div>
-
-            <p className="text-[11px] text-[#0c2340]/70">
-              SHA-256 Merkle verification proves record integrity relative to the committed root.
-            </p>
           </div>
 
           {/* Expandable Metadata Transmission Disclosure */}
-          <div className="rounded-2xl bg-white border border-[#e5dec9] px-4 py-3">
+          <div className="rounded-md bg-white border border-zinc-200 px-4 py-2.5">
             <button
               type="button"
               onClick={() => setShowDisclosure((prev) => !prev)}
               aria-expanded={showDisclosure}
-              className="w-full flex items-center justify-between gap-2 text-left text-xs font-bold text-[#0c2340]"
+              className="w-full flex items-center justify-between gap-2 text-left text-xs font-semibold text-zinc-900"
             >
-              <span>Metadata Transmission Disclosure (Active Layers &amp; Model Visibility)</span>
+              <span>Metadata Transmission Disclosure</span>
               <ChevronDown
-                className={`w-4 h-4 text-[#8c7535] transition-transform ${
+                className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${
                   showDisclosure ? "rotate-180" : ""
                 }`}
               />
             </button>
             {showDisclosure && (
-              <p className="mt-2 pt-2 border-t border-[#e5dec9] text-xs leading-relaxed text-[#0c2340]/80">
+              <div className="mt-2 border-l-2 border-amber-500 bg-amber-50/60 px-3 py-2 text-xs font-mono leading-relaxed text-zinc-700">
                 {summary.metadata_transmission_doc ||
-                  "Layer 1 (Context Metadata Block): injected into model-visible context | Layer 2 (Provider API Identity): user/metadata JSON fields | Layer 3 (HTTP Transport Headers): Origin, Referer, X-Audit-Mode via example.com (note: local models like Ollama ignore custom HTTP transport headers)."}
-              </p>
+                  "Layer 1 (Context Metadata Block): injected into model-visible context | Layer 2 (Provider API Identity): user/metadata JSON fields | Layer 3 (HTTP Transport Headers): Origin, Referer, X-Audit-Mode via example.com (Note: local models like Ollama ignore custom HTTP transport headers)."}
+              </div>
             )}
           </div>
 
-          {/* Category Breakdown Bars */}
+          {/* Category Breakdown */}
           {categories.length > 0 && (
-            <div className="rounded-2xl bg-white border border-[#e5dec9] p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-[#0c2340]">Domain Breakdown</h3>
-                <div className="flex items-center gap-3 text-[11px] font-medium">
-                  <span className="inline-flex items-center gap-1 text-[#991b1b]">
-                    <span className="w-2 h-2 rounded-full bg-[#991b1b]" />
-                    Blocked
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[#8c7535]">
-                    <span className="w-2 h-2 rounded-full bg-[#ae9142]" />
-                    Manual Review
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[#0a843d]">
-                    <span className="w-2 h-2 rounded-full bg-[#0a843d]" />
-                    Compliant
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
+            <div className="rounded-md bg-white border border-zinc-200 p-4 space-y-2.5">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+                Domain Breakdown
+              </h3>
+              <div className="space-y-2">
                 {categories.map((cat) => {
                   const total = cat.total || 1;
-                  const regPct = (cat.regressions / total) * 100;
-                  const revPct = (cat.manual_review / total) * 100;
-                  const compPct = (cat.compliant / total) * 100;
                   return (
                     <div key={cat.category} className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-[#0c2340]">{cat.category}</span>
-                        <span className="font-mono text-[11px] text-[#0c2340]/70">
-                          {cat.regressions} blocked · {cat.manual_review} review · {cat.compliant} pass (mean CDI{" "}
-                          {Number(cat.mean_cdi).toFixed(2)})
+                        <span className="font-medium text-zinc-900">{cat.category}</span>
+                        <span className="font-mono tabular-nums text-[11px] text-zinc-500">
+                          {cat.regressions} blocked · {cat.manual_review} review · {cat.compliant} pass · mean CDI{" "}
+                          {Number(cat.mean_cdi).toFixed(2)}
                         </span>
                       </div>
-                      <div className="w-full h-2.5 rounded-full bg-[#f8f4ec] overflow-hidden flex border border-[#e5dec9]">
-                        {regPct > 0 && (
-                          <div className="h-full bg-[#991b1b]" style={{ width: `${regPct}%` }} />
+                      <div className="w-full h-2 rounded-sm bg-zinc-100 overflow-hidden flex">
+                        {cat.regressions > 0 && (
+                          <div className="h-full bg-red-600" style={{ width: `${(cat.regressions / total) * 100}%` }} />
                         )}
-                        {revPct > 0 && (
-                          <div className="h-full bg-[#ae9142]" style={{ width: `${revPct}%` }} />
+                        {cat.manual_review > 0 && (
+                          <div className="h-full bg-amber-500" style={{ width: `${(cat.manual_review / total) * 100}%` }} />
                         )}
-                        {compPct > 0 && (
-                          <div className="h-full bg-[#0a843d]" style={{ width: `${compPct}%` }} />
+                        {cat.compliant > 0 && (
+                          <div className="h-full bg-emerald-600" style={{ width: `${(cat.compliant / total) * 100}%` }} />
                         )}
                       </div>
                     </div>
@@ -352,33 +291,24 @@ export default function SuiteReportDrawer({
             </div>
           )}
 
-          {/* Filterable Evaluated Prompts Table */}
-          <div className="rounded-2xl bg-white border border-[#e5dec9] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#e5dec9] bg-[#f8f4ec]/60 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
+          {/* Filterable Table */}
+          <div className="rounded-md bg-white border border-zinc-200 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-zinc-200 bg-zinc-50/70 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1">
                 {[
                   { id: "ALL", label: `All (${items.length})` },
-                  {
-                    id: "SUSPENSION_INMEDIATA",
-                    label: `Blocked (${summary.regressions_caught ?? 0})`,
-                  },
-                  {
-                    id: "REVISION_MANUAL",
-                    label: `Review (${summary.manual_review_count ?? 0})`,
-                  },
-                  {
-                    id: "COMPLIANT",
-                    label: `Compliant (${summary.compliant_count ?? 0})`,
-                  },
+                  { id: "SUSPENSION_INMEDIATA", label: `Blocked (${summary.regressions_caught ?? 0})` },
+                  { id: "REVISION_MANUAL", label: `Review (${summary.manual_review_count ?? 0})` },
+                  { id: "COMPLIANT", label: `Compliant (${summary.compliant_count ?? 0})` },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setVerdictFilter(tab.id)}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono uppercase tracking-wider transition-colors ${
                       verdictFilter === tab.id
                         ? "bg-[#0c2340] text-[#d39f10]"
-                        : "bg-[#efe9d9]/70 text-[#0c2340] hover:bg-[#e5dec9]"
+                        : "bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100"
                     }`}
                   >
                     {tab.label}
@@ -390,7 +320,7 @@ export default function SuiteReportDrawer({
                 aria-label="Filter by category"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="rounded-full bg-white border border-[#dfd7c5] px-3 py-1 text-xs font-medium text-[#0c2340] focus:outline-none"
+                className="rounded-md bg-white border border-zinc-200 px-2.5 py-1 text-xs text-zinc-800 focus:outline-none"
               >
                 <option value="ALL">All Categories</option>
                 {categories.map((c) => (
@@ -401,48 +331,45 @@ export default function SuiteReportDrawer({
               </select>
             </div>
 
-            <div className="divide-y divide-[#e5dec9] max-h-96 overflow-y-auto">
+            <div className="divide-y divide-zinc-200 max-h-96 overflow-y-auto">
               {filteredItems.map((item) => {
-                const badge = VERDICT_BADGE[item.verdict] || VERDICT_BADGE.COMPLIANT;
-                const BadgeIcon = badge.Icon;
+                const tag = VERDICT_TAG[item.verdict] || VERDICT_TAG.COMPLIANT;
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => onSelectItem(item)}
-                    className="w-full px-4 py-3 text-left hover:bg-[#f8f4ec] transition-colors flex items-center justify-between gap-3 group"
+                    className="w-full px-4 py-2.5 text-left hover:bg-zinc-50 transition-colors flex items-center justify-between gap-3 group"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[11px] font-semibold text-[#8c7535]">
+                        <span className="font-mono tabular-nums text-[11px] text-zinc-500">
                           {item.id}
                         </span>
-                        <span className="text-xs font-bold text-[#0c2340] group-hover:underline">
+                        <span className="text-xs font-semibold text-zinc-900 group-hover:underline">
                           {item.title || item.category}
                         </span>
-                        <span className="text-[11px] text-[#0c2340]/60">· {item.category}</span>
+                        <span className="text-[11px] text-zinc-400">· {item.category}</span>
                       </div>
-                      <p className="text-xs text-[#0c2340]/75 truncate mt-0.5">{item.prompt}</p>
+                      <p className="text-xs text-zinc-600 truncate mt-0.5">{item.prompt}</p>
                     </div>
 
                     <div className="shrink-0 flex items-center gap-3">
-                      <div className="text-right font-mono text-[11px] hidden sm:block">
-                        <div className="text-[#0c2340] font-semibold">
+                      <div className="text-right font-mono tabular-nums text-[11px] hidden sm:block">
+                        <div className="text-zinc-900 font-semibold">
                           CDI {Number(item.cdi_risk).toFixed(2)}
                         </div>
-                        <div className="text-[#8c7535]">
+                        <div className="text-zinc-500">
                           {Math.round(item.rho_A * 100)}% vs {Math.round(item.rho_B * 100)}%
                         </div>
                       </div>
 
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.bg} ${badge.text} ${badge.border}`}
-                      >
-                        <BadgeIcon className="w-3 h-3" />
-                        {badge.label}
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-200 bg-white text-[11px] font-mono uppercase tracking-wider">
+                        <span className={`w-1.5 h-1.5 rounded-full ${tag.dot}`} />
+                        <span className={tag.text}>{tag.label}</span>
                       </span>
 
-                      <ArrowUpRight className="w-4 h-4 text-[#8c7535] group-hover:text-[#0c2340]" />
+                      <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-900" />
                     </div>
                   </button>
                 );
