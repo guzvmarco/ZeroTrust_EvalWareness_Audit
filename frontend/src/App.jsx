@@ -227,15 +227,17 @@ function EvaluationSetupPanel({
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c2340]">
               <Sliders className="w-3.5 h-3.5 text-[#ae9142]" />
-              Batch Suite Size:{" "}
-              <span className="font-mono text-[#8c7535]">{batchSize} Prompts</span>
+              Sample Batch:{" "}
+              <span className="font-mono text-[#8c7535]">
+                {batchSize} of 500 Prompts
+              </span>
             </span>
 
             <div className="flex items-center gap-1">
               {[
                 { n: 1, label: "1 (Single)" },
                 { n: 9, label: "9 (Quick Demo)" },
-                { n: 50, label: "50 (Full Suite)" },
+                { n: 50, label: "50 (Sample 50/500)" },
               ].map((preset) => (
                 <button
                   key={preset.n}
@@ -1077,7 +1079,7 @@ export default function App() {
             >
               <span className="w-2 h-2 rounded-full bg-[#f87171] shrink-0" />
               <span>
-                CI/CD Suite · {suiteSummary?.total_audited ?? 50} Prompts ·{" "}
+                CI/CD Suite · {suiteSummary?.total_audited ?? 50}/{suiteSummary?.pool_total ?? 500} ·{" "}
                 <strong className="text-[#fca5a5]">
                   {suiteSummary?.gate_status || "BLOCKED"}
                 </strong>

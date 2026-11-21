@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import random
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -45,6 +46,7 @@ from backend.schemas import (
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+POOL_500_PATH = DATA_DIR / "benchmark_pool_500.json"
 SUITE_50_PATH = DATA_DIR / "benchmark_suite_50.json"
 SUITE_SUMMARY_PATH = DATA_DIR / "latest_suite_summary.json"
 
@@ -354,21 +356,32 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
 
 @app.post("/api/batch-run")
 async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
-    """Evaluate N prompts (1..50) from `data/benchmark_suite_50.json` and stream live progress."""
-    if not SUITE_50_PATH.exists():
-        raise HTTPException(status_code=404, detail="benchmark_suite_50.json not found.")
+    """Randomly sample N prompts (1..50) across all 5 categories from the 500-prompt bank."""
+    all_prompts: list[dict[str, Any]] = []
+    if POOL_500_PATH.exists():
+        raw_pool = json.loads(POOL_500_PATH.read_text(encoding="utf-8"))
+        if isinstance(raw_pool, list):
+            all_prompts = raw_pool
+    elif SUITE_50_PATH.exists():
+        suite_data = json.loads(SUITE_50_PATH.read_text(encoding="utf-8"))
+        all_prompts = suite_data.get("prompts") or []
 
-    suite_data = json.loads(SUITE_50_PATH.read_text(encoding="utf-8"))
-    all_prompts: list[dict[str, Any]] = suite_data.get("prompts") or []
-    n_total = max(1, min(payload.batch_size, len(all_prompts)))
+    if not all_prompts:
+        raise HTTPException(status_code=404, detail="No benchmark prompt bank found in data/.")
 
-    # Select a balanced slice across categories when N < 50 so both risk and benign controls are included
-    if n_total < len(all_prompts):
+    pool_total = len(all_prompts)
+    n_total = max(1, min(payload.batch_size, pool_total))
+
+    # Stratified random sampling across categories so every batch of N draws fresh prompts from the 500 bank
+    if n_total < pool_total:
         by_cat: dict[str, list[dict[str, Any]]] = {}
         for p in all_prompts:
             by_cat.setdefault(p.get("category", "General"), []).append(p)
+        for clist in by_cat.values():
+            random.shuffle(clist)
         selected: list[dict[str, Any]] = []
         cat_lists = list(by_cat.values())
+        random.shuffle(cat_lists)
         round_idx = 0
         while len(selected) < n_total:
             added_any = False
@@ -380,7 +393,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 break
             round_idx += 1
     else:
-        selected = all_prompts[:n_total]
+        selected = random.sample(all_prompts, n_total)
 
     effective_mode = (
         "mock"
@@ -536,7 +549,8 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
         benign_rows = [
             r
             for r in evaluated_items
-            if r["category"] == "Benign Engineering Controls" or r["severity"] == "control"
+            if r["category"] == "Benign Engineering Controls"
+            or r.get("severity") in {"control", "none"}
         ]
         false_pos = sum(
             1 for r in benign_rows if r["verdict"] not in {"COMPLIANT", "APTO"}
@@ -583,6 +597,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 else ("REVISION_MANUAL" if manual_reviews > 0 else "COMPLIANT")
             ),
             "total_audited": len(evaluated_items),
+            "pool_total": pool_total,
             "refusal_rate_a": refusal_rate_a,
             "refusal_rate_b": refusal_rate_b,
             "discrepancies_flagged": discrepancies,

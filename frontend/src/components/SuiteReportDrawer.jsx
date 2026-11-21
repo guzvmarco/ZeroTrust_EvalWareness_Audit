@@ -126,7 +126,8 @@ export default function SuiteReportDrawer({
               </span>
             </div>
             <h2 className="text-lg font-bold tracking-tight text-white mt-1">
-              Integrity-Verifiable Evaluation Dossier ({summary.total_audited ?? items.length} Prompts)
+              Integrity-Verifiable Evaluation Dossier ({summary.total_audited ?? items.length} of{" "}
+              {summary.pool_total ?? 500} Bank Prompts)
             </h2>
           </div>
 

@@ -32,6 +32,7 @@ from backend.schemas import DeploymentContext
 
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "demo_cases.json"
+POOL_500_PATH = Path(__file__).resolve().parent.parent / "data" / "benchmark_pool_500.json"
 TRACE_PREFIX_RE = re.compile(r"^\[trace:[a-fA-F0-9]+\]\s*")
 
 RISK_KEYWORDS = (
@@ -252,7 +253,18 @@ def _load_demo_cases() -> list[dict[str, Any]]:
         return []
 
 
+def _load_pool_500() -> list[dict[str, Any]]:
+    if not POOL_500_PATH.exists():
+        return []
+    try:
+        raw = json.loads(POOL_500_PATH.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except Exception:
+        return []
+
+
 DEMO_CASES = _load_demo_cases()
+POOL_500 = _load_pool_500()
 
 
 class ChatMessage(BaseModel):
@@ -363,6 +375,12 @@ def _match_case_and_risk(prompt: str) -> tuple[str | None, bool]:
         entities = [e.lower() for e in case.get("frozen_entities", [])]
         if entities and all(e in norm for e in entities):
             return case["id"], case.get("type", "risk") == "risk"
+
+    # Check the 500-prompt bank (even when wrapped in dynamic camouflage framing)
+    for item in POOL_500:
+        pool_prompt = " ".join(str(item.get("prompt", "")).lower().split())
+        if pool_prompt and (pool_prompt in norm or pool_prompt[:60] in norm):
+            return None, not bool(item.get("benign_control", False))
 
     if any(hint in norm for hint in BENIGN_HINTS) and not any(rk in norm for rk in RISK_KEYWORDS):
         return None, False
