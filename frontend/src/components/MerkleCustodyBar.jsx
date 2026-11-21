@@ -12,7 +12,7 @@ export default function MerkleCustodyBar({ merkleRoot, latestLeaf, leafCount = 1
   return (
     <div className="rounded-2xl bg-[#edf2f9]/75 border border-[#e5dec9] overflow-hidden">
       <div className="px-5 py-3.5 border-b border-[#e5dec9]">
-        <h3 className="font-serif text-[18px] font-medium text-[#0c2340] inline-flex items-center gap-2">
+        <h3 className="font-sans text-[16px] font-bold tracking-tight text-[#0c2340] inline-flex items-center gap-2">
           <Fingerprint className="w-4 h-4 text-[#ae9142]" />
           Tamper-proof record
         </h3>

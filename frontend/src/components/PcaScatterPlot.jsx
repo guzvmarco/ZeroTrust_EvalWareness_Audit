@@ -126,7 +126,7 @@ export default function PcaScatterPlot({
     <div className="bg-white rounded-2xl border border-[#e5dec9] overflow-hidden">
       <div className="px-5 py-3.5 border-b border-[#e5dec9] bg-[#f8f4ec]/60 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="font-serif text-[18px] font-medium text-[#0c2340]">
+          <h3 className="font-sans text-[16px] font-bold tracking-tight text-[#0c2340]">
             How the prompt was rewritten
           </h3>
           <p className="text-[13px] text-[#0c2340]/70">

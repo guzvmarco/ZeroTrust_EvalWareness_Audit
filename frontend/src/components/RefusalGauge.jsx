@@ -60,7 +60,7 @@ export default function RefusalGauge({ metrics, tamperState, onExport, onTamper,
         <div>
           <div className={`text-[17px] font-bold leading-snug ${v.text}`}>
             <span className="font-mono text-[14px] mr-1.5">{v.code}</span>
-            <span className="font-serif font-medium text-[19px]">— {v.headline}</span>
+            <span className="font-sans font-bold text-[17px]">— {v.headline}</span>
           </div>
           <p className="text-[14px] text-[#0c2340]/85 mt-0.5">{v.explain}</p>
         </div>

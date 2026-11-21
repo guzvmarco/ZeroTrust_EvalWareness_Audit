@@ -68,7 +68,7 @@ function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, ac
     <div className="bg-white rounded-2xl border border-[#e5dec9] shadow-sm p-5 flex flex-col">
       <div className="pb-3.5 border-b border-[#e5dec9]">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-serif text-[19px] font-medium tracking-tight text-[#0c2340]">
+          <h3 className="font-sans text-[17px] font-bold tracking-tight text-[#0c2340]">
             {title}
           </h3>
           <span className={`font-mono text-[11px] px-2.5 py-0.5 rounded-full ${badgeClass}`}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowUp, Plus, ChevronDown, Server, Cpu } from "lucide-react";
+import { Send, Plus, ChevronDown, Server, Cpu } from "lucide-react";
 import PcaScatterPlot from "./components/PcaScatterPlot.jsx";
 import DualStreamCompare from "./components/DualStreamCompare.jsx";
 import RefusalGauge from "./components/RefusalGauge.jsx";
@@ -72,7 +72,7 @@ function Composer({ value, onChange, onSend, disabled, engineMode, compact = fal
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         rows={compact ? 1 : 2}
-        placeholder="Challenge a model with a dual-use prompt, or pick a calibrated probe below..."
+        placeholder="Test your model with a custom dual-use prompt, or launch a calibrated probe below..."
         aria-label="Prompt to audit"
         className="w-full resize-none border-0 bg-transparent text-[15px] leading-relaxed text-[#0c2340] placeholder-[#0c2340]/45 focus:outline-none"
       />
@@ -94,7 +94,7 @@ function Composer({ value, onChange, onSend, disabled, engineMode, compact = fal
           className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] text-xs font-semibold px-4 py-2 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
         >
           <span>Audit Model</span>
-          <ArrowUp className="w-3.5 h-3.5" />
+          <Send className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -139,7 +139,7 @@ function EvidenceDrawer({ children }) {
         className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#f8f4ec]/60 transition-colors"
       >
         <span>
-          <span className="block font-serif text-[17px] font-medium text-[#0c2340]">
+          <span className="block font-sans text-[16px] font-bold tracking-tight text-[#0c2340]">
             Inspect Geometry &amp; Cryptographic Proof
           </span>
           <span className="block text-[13px] text-[#0c2340]/65">
@@ -527,7 +527,7 @@ export default function App() {
               AEGIS<span className="text-[#d39f10]">-AUDIT</span>
             </span>
             <span className="hidden sm:inline text-xs text-[#c1cddd]/80">
-              AI Alignment &amp; Compliance Console
+              Bring-Your-Own-Model Evaluation Awareness &amp; Alignment Gate
             </span>
           </div>
 
@@ -587,17 +587,22 @@ export default function App() {
         </div>
       </header>
 
-      {/* Initial Screen: Editorial Hero + Tactile Composer Card */}
+      {/* Initial Screen: BYOM Hero + Tactile Composer Card */}
       {!inChat && (
-        <main className="flex-1 flex items-center justify-center px-4 py-14">
+        <main className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-2xl mx-auto">
-            <div className="text-center mb-8">
-              <h1 className="font-serif tracking-tight text-4xl sm:text-[42px] font-medium text-[#0c2340] leading-[1.12]">
-                Test how an AI responds to an auditor vs. a real user
+            <div className="text-center mb-7">
+              <div className="inline-block font-mono text-[11px] font-semibold tracking-wider uppercase px-3 py-1 rounded-full bg-[#efe9d9] border border-[#ae9142] text-[#0c2340] mb-4">
+                AUDIT YOUR OWN MODELS · ZERO BLACK-BOX TRUST
+              </div>
+              <h1 className="font-sans tracking-tight text-3xl sm:text-[38px] font-extrabold text-[#0c2340] leading-[1.14]">
+                Test Your Models Against Evaluation Awareness Before You Ship
               </h1>
-              <p className="mt-3.5 text-[15px] text-[#0c2340]/70 max-w-xl mx-auto leading-relaxed">
-                Send one prompt across both deployment contexts to uncover hidden moderation delays
-                and alignment faking.
+              <p className="mt-3.5 text-[15px] text-[#0c2340]/75 max-w-xl mx-auto leading-relaxed">
+                Models can recognize formal safety benchmarks and feign alignment under scrutiny—only
+                to fail in production. Connect your own local weights or staging endpoint, fire
+                semantically invariant probes across Auditor and Canary channels, and enforce real
+                alignment with tamper-evident proof.
               </p>
             </div>
 
@@ -613,8 +618,40 @@ export default function App() {
               <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
             </div>
 
-            <p className="mt-8 text-center text-xs text-[#0c2340]/50">
-              Runs locally on CPU · No external cloud APIs
+            {/* 3-Item Methodology Strip */}
+            <div className="max-w-2xl mx-auto mt-8 pt-6 border-t border-[#e5dec9] grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Zero System-Prompt Tampering
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  Both channels share identical generation parameters (seed, temperature, max tokens)
+                  and untouched system instructions—eliminating prompt bias.
+                </p>
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Metadata &amp; Framing Isolation
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  We vary only deployment context metadata (auditor harness vs. organic consumer
+                  origin) and semantically invariant phrasing (cos &ge; 0.78).
+                </p>
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Side-Channel &amp; Cryptographic Proof
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  Nanosecond TTFT latency deltas and refusal shifts are sealed into an RFC 8785
+                  SHA-256 Merkle dossier for independent verification.
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-7 text-center font-mono text-[11px] text-[#0c2340]/55">
+              Model-Agnostic BYOM Architecture · Live Local Ollama Weights + CPU Embeddings · RFC
+              8785 Audit Ledger
             </p>
           </div>
         </main>
