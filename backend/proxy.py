@@ -25,6 +25,7 @@ from pathlib import Path
 import random
 import re
 import time
+from urllib.parse import urlsplit, urlunsplit
 import uuid
 
 import httpx
@@ -229,10 +230,52 @@ class DualChannelProxy:
             or m.startswith("qwen/")
         )
 
+    @staticmethod
+    def normalize_chat_completions_url(base_url: str | None) -> str | None:
+        """Convert a user-supplied base URL (e.g. `https://api.groq.com/openai/v1`) into a chat completions endpoint."""
+        raw = (base_url or "").strip()
+        if not raw:
+            return None
+        trimmed = raw.rstrip("/")
+        if trimmed.endswith("/chat/completions"):
+            return trimmed
+        if trimmed.endswith("/v1"):
+            return f"{trimmed}/chat/completions"
+        return f"{trimmed}/v1/chat/completions"
+
+    @staticmethod
+    def redact_base_url(base_url: str | None, fallback_url: str = GROQ_CHAT_URL) -> str:
+        """Return a clean base URL for `evaluation_metadata` with any credentials or query keys strictly redacted."""
+        raw = (base_url or "").strip() or fallback_url
+        try:
+            parts = urlsplit(raw)
+            host = parts.hostname or "localhost"
+            port = f":{parts.port}" if parts.port else ""
+            clean_path = re.sub(r"/chat/completions/?$", "", parts.path or "").rstrip("/")
+            scheme = parts.scheme or "https"
+            return urlunsplit((scheme, f"{host}{port}", clean_path, "", ""))
+        except Exception:
+            return "https://api.groq.com/openai/v1"
+
     def _resolve_target(
         self, request: ChannelRequest, engine_mode: EngineMode
     ) -> tuple[str, str, str]:
         chosen_model = (request.model_name or self.ollama_model).strip()
+        custom_url = self.normalize_chat_completions_url(request.base_url)
+        if custom_url:
+            lower_url = custom_url.lower()
+            if "8001" in lower_url or chosen_model == SIMULATED_VENDOR_MODEL:
+                return custom_url, "aegis-sim-v1", "mock"
+            if "11434" in lower_url or "ollama" in lower_url:
+                return custom_url, chosen_model, "ollama"
+            if (
+                "groq.com" in lower_url
+                or (request.api_key or "").strip()
+                or self.is_groq_model(chosen_model, engine_mode, request.provider)
+            ):
+                return custom_url, chosen_model, "groq"
+            return custom_url, chosen_model, "ollama"
+
         if engine_mode == "mock" or chosen_model == SIMULATED_VENDOR_MODEL:
             return self.mock_url, "aegis-sim-v1", "mock"
         if self.is_groq_model(chosen_model, engine_mode, request.provider):
@@ -303,9 +346,10 @@ class DualChannelProxy:
             "Accept": "text/event-stream",
             "Content-Type": "application/json",
         }
+        explicit_key = (request.api_key or "").strip()
         if resolved_provider == "groq":
             api_key = (
-                (request.api_key or "").strip()
+                explicit_key
                 or os.environ.get("GROQ_API_KEY", "").strip()
                 or GROQ_API_KEY.strip()
             )
@@ -325,6 +369,8 @@ class DualChannelProxy:
                 )
                 return
             headers["Authorization"] = f"Bearer {api_key}"
+        elif explicit_key:
+            headers["Authorization"] = f"Bearer {explicit_key}"
 
         if layers.http_transport_headers:
             # Ollama's built-in CORS middleware rejects non-localhost `Origin` headers with 403 Forbidden.

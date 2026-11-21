@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from backend.camouflage import CamouflageEngine
 from backend.ledger import MerkleLedger
-from backend.metrics import MetricsEngine
+from backend.metrics import MetricsEngine, normalize_text_for_embedding
 from backend.proxy import ChannelRunSummary, ChannelStreamChunk, DualChannelProxy
 from backend.schemas import (
     AuditResult,
@@ -145,6 +145,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.active_suite_summary = initial_summary
     app.state.latest_eval_meta = {
         "is_demo_data": True,
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key": "[REDACTED]",
         "metadata_layers": {
             "context_metadata_block": True,
             "provider_api_identity": True,
@@ -189,13 +191,33 @@ async def health() -> dict[str, object]:
 
 
 def _resolve_effective_mode(
-    model_name: str, engine_mode: str, provider: str | None = None
+    model_name: str,
+    engine_mode: str,
+    provider: str | None = None,
+    base_url: str | None = None,
 ) -> str:
+    b_url = (base_url or "").strip().lower()
+    if b_url:
+        if "8001" in b_url or model_name == "simulated-adversarial-vendor":
+            return "mock"
+        if "11434" in b_url or "ollama" in b_url:
+            return "ollama"
+        if "groq.com" in b_url:
+            return "groq"
     if model_name == "simulated-adversarial-vendor" or engine_mode == "mock":
         return "mock"
     if DualChannelProxy.is_groq_model(model_name, engine_mode, provider):
         return "groq"
     return "ollama"
+
+
+def _redacted_base_url_for_mode(base_url: str | None, effective_mode: str, proxy: DualChannelProxy) -> str:
+    fallback = (
+        proxy.mock_url
+        if effective_mode == "mock"
+        else ("https://api.groq.com/openai/v1" if effective_mode == "groq" else proxy.ollama_url)
+    )
+    return DualChannelProxy.redact_base_url(base_url, fallback)
 
 
 @app.get("/api/models", response_model=ModelsResponse)
@@ -273,11 +295,62 @@ def _build_api_error_result(
     )
 
 
+async def _translate_text_for_embedding(
+    text: str,
+    lang: str,
+    effective_mode: str,
+    payload: Any,
+) -> str:
+    """Translate Spanish text to English solely for CPU embedding similarity (with timeout fallback)."""
+    raw = (text or "").strip()
+    if not raw or (lang or "en").lower() == "en":
+        return normalize_text_for_embedding(raw, lang="en")
+    if effective_mode == "mock":
+        return normalize_text_for_embedding(raw, lang="es")
+
+    trans_req = ChannelRequest(
+        prompt=(
+            "Translate the following Spanish text into concise English for semantic similarity "
+            "analysis. Output ONLY the English translation:\n\n" + raw[:700]
+        ),
+        deployment_context=DEFAULT_CANARY_CONTEXT,
+        seed=42,
+        temperature=0.0,
+        max_tokens=140,
+        engine_mode=effective_mode,
+        model_name=payload.model_name,
+        base_url=payload.base_url,
+        provider=effective_mode,
+        api_key=payload.api_key,
+    )
+
+    async def _collect() -> str:
+        tokens: list[str] = []
+        async for item in app.state.proxy._stream_channel("B", trans_req, effective_mode):
+            if isinstance(item, ChannelStreamChunk) and item.token:
+                tokens.append(item.token)
+        return "".join(tokens).strip()
+
+    try:
+        translated = await asyncio.wait_for(_collect(), timeout=3.5)
+        return normalize_text_for_embedding(
+            raw,
+            lang="es",
+            translator_fn=lambda _: translated or raw,
+        )
+    except Exception:
+        return normalize_text_for_embedding(raw, lang="es")
+
+
+@app.post("/api/audit")
 @app.post("/api/audit/stream")
 async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
     """Execute concurrent Channel A/B audit, seal into MerkleLedger, and stream SSE events."""
     effective_mode = _resolve_effective_mode(
-        payload.model_name, payload.engine_mode, payload.provider
+        payload.model_name, payload.engine_mode, payload.provider, payload.base_url
+    )
+    redacted_base_url = _redacted_base_url_for_mode(
+        payload.base_url, effective_mode, app.state.proxy
     )
     req_a = ChannelRequest(
         prompt=payload.prompt_A,
@@ -287,6 +360,7 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
         max_tokens=260 if effective_mode == "groq" else 160,
         engine_mode=effective_mode,
         model_name=payload.model_name,
+        base_url=payload.base_url,
         provider=effective_mode,
         api_key=payload.api_key,
         metadata_layers=payload.metadata_layers,
@@ -299,6 +373,7 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
         max_tokens=260 if effective_mode == "groq" else 160,
         engine_mode=effective_mode,
         model_name=payload.model_name,
+        base_url=payload.base_url,
         provider=effective_mode,
         api_key=payload.api_key,
         metadata_layers=payload.metadata_layers,
@@ -342,6 +417,15 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
                 ctx_b=payload.deployment_context_B,
             )
         else:
+            req_lang = (payload.lang or "en").lower()
+            norm_a, norm_b = await asyncio.gather(
+                _translate_text_for_embedding(
+                    summary_a.output, req_lang, effective_mode, payload
+                ),
+                _translate_text_for_embedding(
+                    summary_b.output, req_lang, effective_mode, payload
+                ),
+            )
             prelim_result = app.state.metrics.compute_audit_metrics(
                 output_a=summary_a.output,
                 output_b=summary_b.output,
@@ -351,6 +435,8 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
                 ctx_a=payload.deployment_context_A,
                 ctx_b=payload.deployment_context_B,
                 merkle_root="0" * 64,
+                lang=req_lang,
+                translator_fn=lambda t: norm_a if t == MetricsEngine.strip_reasoning_tags(summary_a.output) else norm_b,
             )
 
         leaf_payload = MerkleLeafPayload(
@@ -391,6 +477,8 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
             "is_demo_data": False,
             "model_name": payload.model_name,
             "engine_mode": effective_mode,
+            "base_url": redacted_base_url,
+            "api_key": "[REDACTED]",
             "metadata_layers": payload.metadata_layers.model_dump(),
             "metadata_transmission_doc": transmission_doc,
         }
@@ -423,6 +511,13 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
     if not all_prompts:
         raise HTTPException(status_code=404, detail="No benchmark prompt bank found in data/.")
 
+    requested_lang = (payload.lang or "en").lower()
+    lang_filtered = [
+        p for p in all_prompts if str(p.get("lang") or "en").lower() == requested_lang
+    ]
+    if lang_filtered:
+        all_prompts = lang_filtered
+
     pool_total = len(all_prompts)
     n_total = max(1, min(payload.batch_size, pool_total))
     max_attempts = min(pool_total, n_total + 15)
@@ -433,7 +528,10 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
     )
 
     effective_mode = _resolve_effective_mode(
-        payload.model_name, payload.engine_mode, payload.provider
+        payload.model_name, payload.engine_mode, payload.provider, payload.base_url
+    )
+    redacted_base_url = _redacted_base_url_for_mode(
+        payload.base_url, effective_mode, app.state.proxy
     )
     transmission_doc = app.state.proxy.build_metadata_transmission_doc(
         layers=payload.metadata_layers,
@@ -484,6 +582,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 max_tokens=batch_max_tokens,
                 engine_mode=effective_mode,
                 model_name=payload.model_name,
+                base_url=payload.base_url,
                 provider=effective_mode,
                 api_key=payload.api_key,
                 metadata_layers=payload.metadata_layers,
@@ -496,6 +595,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 max_tokens=batch_max_tokens,
                 engine_mode=effective_mode,
                 model_name=payload.model_name,
+                base_url=payload.base_url,
                 provider=effective_mode,
                 api_key=payload.api_key,
                 metadata_layers=payload.metadata_layers,
@@ -538,6 +638,15 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                     await asyncio.sleep(3.5)
                 continue
 
+            item_lang = str(item.get("lang") or requested_lang or "en").lower()
+            norm_a, norm_b = await asyncio.gather(
+                _translate_text_for_embedding(
+                    summary_a.output, item_lang, effective_mode, payload
+                ),
+                _translate_text_for_embedding(
+                    summary_b.output, item_lang, effective_mode, payload
+                ),
+            )
             metrics_res = app.state.metrics.compute_audit_metrics(
                 output_a=summary_a.output,
                 output_b=summary_b.output,
@@ -547,6 +656,8 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 ctx_a=DEFAULT_AUDITOR_CONTEXT,
                 ctx_b=DEFAULT_CANARY_CONTEXT,
                 merkle_root="0" * 64,
+                lang=item_lang,
+                translator_fn=lambda t: norm_a if t == MetricsEngine.strip_reasoning_tags(summary_a.output) else norm_b,
             )
 
             leaf_payload = MerkleLeafPayload(
@@ -677,6 +788,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
             "is_demo_data": False,
             "model_name": payload.model_name,
             "engine_mode": effective_mode,
+            "base_url": redacted_base_url,
             "timestamp": _now_iso(),
             "gate_status": "BLOCKED" if regressions > 0 else ("WARNING" if manual_reviews > 0 else "PASSED"),
             "verdict": (
@@ -708,6 +820,8 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
             "is_demo_data": False,
             "model_name": payload.model_name,
             "engine_mode": effective_mode,
+            "base_url": redacted_base_url,
+            "api_key": "[REDACTED]",
             "batch_size": len(evaluated_items),
             "metadata_layers": payload.metadata_layers.model_dump(),
             "metadata_transmission_doc": transmission_doc,

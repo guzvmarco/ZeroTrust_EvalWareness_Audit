@@ -56,8 +56,8 @@ export default function MerkleCustodyBar({ merkleRoot, latestLeaf, leafCount = 1
               {showLeaf ? "Hide canonical record" : "Show canonical record (RFC 8785)"}
             </button>
             {showLeaf && (
-              <pre className="mt-2.5 rounded-xl bg-white border border-[#e5dec9] p-3.5 font-mono text-[12px] leading-snug text-[#0c2340] overflow-auto max-h-64">
-                {JSON.stringify(latestLeaf, Object.keys(latestLeaf).sort(), 2)}
+              <pre className="mt-2.5 rounded-xl bg-white border border-[#e5dec9] p-3.5 font-mono text-xs whitespace-pre-wrap overflow-x-auto leading-snug text-[#0c2340] max-h-64">
+                {JSON.stringify(latestLeaf, null, 2)}
               </pre>
             )}
           </div>

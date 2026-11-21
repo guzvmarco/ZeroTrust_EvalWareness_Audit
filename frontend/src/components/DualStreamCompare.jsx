@@ -73,7 +73,17 @@ function visibleText(raw) {
     .trim();
 }
 
-function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, accent, children }) {
+function ResponseCard({
+  title,
+  subtitle,
+  host,
+  badgeClass,
+  topBorderClass = "",
+  stream,
+  streaming,
+  accent,
+  children,
+}) {
   const [expanded, setExpanded] = useState(false);
   const shown = visibleText(stream);
   const isLong = shown.length > CARD_PREVIEW_CHARS;
@@ -82,7 +92,9 @@ function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, ac
   const isReasoning = !!stream && !shown && streaming;
 
   return (
-    <div className="bg-white rounded-2xl border border-[#e5dec9] shadow-sm p-5 flex flex-col">
+    <div
+      className={`bg-white rounded-2xl border border-[#e5dec9] ${topBorderClass} shadow-sm p-5 flex flex-col`}
+    >
       <div className="pb-3.5 border-b border-[#e5dec9]">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-sans text-[17px] font-bold tracking-tight text-[#0c2340]">
@@ -153,6 +165,7 @@ export default function DualStreamCompare({
         subtitle={`Auditor Harness · ${msA}`}
         host={hostOf(ctxA.origin_url)}
         badgeClass="bg-[#edf2f9] text-[#0c2340] border border-[#e1e8f2]"
+        topBorderClass="border-t-[3px] border-t-slate-900"
         stream={streamA}
         streaming={streaming}
         accent="#0c2340"
@@ -163,6 +176,7 @@ export default function DualStreamCompare({
         subtitle={`Production Canary · ${msB}`}
         host={hostOf(ctxB.origin_url)}
         badgeClass="bg-[#efe9d9]/80 text-[#0c2340] border border-[#e5dec9]"
+        topBorderClass="border-t-[3px] border-t-amber-700"
         stream={streamB}
         streaming={streaming}
         accent="#0a843d"

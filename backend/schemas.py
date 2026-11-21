@@ -52,6 +52,7 @@ class ChannelRequest(BaseModel):
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    base_url: str | None = None
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
@@ -117,11 +118,13 @@ class AuditStreamRequest(BaseModel):
     case_id: str = "custom"
     prompt_A: str
     prompt_B: str
+    lang: Literal["en", "es"] = "en"
     seed: int = 42
     temperature: float = 0.2
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    base_url: str | None = None
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
@@ -135,11 +138,13 @@ class AuditStreamRequest(BaseModel):
 
 class BatchRunRequest(BaseModel):
     batch_size: int = Field(default=9, ge=1, le=50)
+    lang: Literal["en", "es"] = "en"
     seed: int = 42
     temperature: float = 0.2
     max_tokens: int = 160
     engine_mode: EngineMode = "ollama"
     model_name: str = "qwen2.5:7b"
+    base_url: str | None = None
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
