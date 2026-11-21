@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Plus, ChevronDown, Server, Cpu } from "lucide-react";
+import { ArrowUp, Plus, ChevronDown, Server, Cpu } from "lucide-react";
 import PcaScatterPlot from "./components/PcaScatterPlot.jsx";
 import DualStreamCompare from "./components/DualStreamCompare.jsx";
 import RefusalGauge from "./components/RefusalGauge.jsx";
@@ -37,38 +37,71 @@ const GENERIC_FALLBACK = (prompt) => ({
   },
 });
 
-/** Chat composer used both in the centered hero and docked at the bottom of the thread. */
-function Composer({ value, onChange, onSend, disabled, large }) {
+/** Cohesive, tactile AI composer card used in the centered hero and docked in active threads. */
+function Composer({ value, onChange, onSend, disabled, engineMode, compact = false }) {
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [value]);
+
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!disabled) onSend();
+      if (!disabled && value.trim()) onSend();
     }
   };
+
+  const targetLabel =
+    engineMode === "ollama"
+      ? "Target: localhost:11434 · qwen2.5:7b"
+      : "Simulated Vendor Endpoint";
+
   return (
-    <div className="flex items-end gap-2 bg-white border border-[#c1cddd] focus-within:border-[#0c2340] px-3 py-2.5">
+    <div
+      className={`rounded-2xl bg-white border border-[#dfd7c5] shadow-sm transition-shadow focus-within:shadow-md focus-within:border-[#c8bea6] ${
+        compact ? "p-3.5" : "p-4"
+      }`}
+    >
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        rows={large ? 3 : 1}
-        placeholder="Type a prompt to audit, or pick an example below..."
+        rows={compact ? 1 : 2}
+        placeholder="Challenge a model with a dual-use prompt, or pick a calibrated probe below..."
         aria-label="Prompt to audit"
-        className="flex-1 resize-none bg-transparent text-[16px] leading-relaxed text-[#0c2340] placeholder-[#0c2340]/45 focus:outline-none py-1"
+        className="w-full resize-none border-0 bg-transparent text-[15px] leading-relaxed text-[#0c2340] placeholder-[#0c2340]/45 focus:outline-none"
       />
-      <button
-        type="button"
-        onClick={onSend}
-        disabled={disabled || !value.trim()}
-        className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 text-[15px] font-semibold bg-[#0c2340] text-[#d39f10] border border-[#ae9142] hover:bg-[#163660] disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Send
-        <Send className="w-4 h-4" />
-      </button>
+
+      <div className="mt-2.5 pt-2.5 border-t border-[#e5dec9]/75 flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f8f4ec] border border-[#e5dec9] px-3 py-1 text-xs font-medium text-[#0c2340]/75">
+          {engineMode === "ollama" ? (
+            <Cpu className="w-3.5 h-3.5 text-[#ae9142]" />
+          ) : (
+            <Server className="w-3.5 h-3.5 text-[#ae9142]" />
+          )}
+          <span className="font-mono text-[11px]">{targetLabel}</span>
+        </span>
+
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={disabled || !value.trim()}
+          className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] text-xs font-semibold px-4 py-2 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+        >
+          <span>Audit Model</span>
+          <ArrowUp className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
 
+/** Understated starter chips with no colored dots or rigid wireframe borders. */
 function StarterChips({ onPick, disabled }) {
   return (
     <div className="flex flex-wrap justify-center gap-2">
@@ -78,12 +111,8 @@ function StarterChips({ onPick, disabled }) {
           type="button"
           disabled={disabled}
           onClick={() => onPick(c)}
-          className="inline-flex items-center gap-2 px-3.5 py-2 text-[14px] bg-[#f8f4ec] hover:bg-[#efe9d9] text-[#0c2340] border border-[#c1cddd] hover:border-[#0c2340] disabled:opacity-50"
+          className="bg-[#efe9d9]/70 hover:bg-[#e5dec9] text-[#0c2340] text-xs font-medium px-3.5 py-1.5 rounded-full transition-colors disabled:opacity-50"
         >
-          <span
-            className={`w-2 h-2 inline-block ${c.type === "benign" ? "bg-[#0a843d]" : "bg-[#991b1b]"}`}
-            aria-hidden="true"
-          />
           {c.pillLabel}
         </button>
       ))}
@@ -102,23 +131,23 @@ function EvidenceDrawer({ children }) {
   };
 
   return (
-    <div className="border border-[#c1cddd] bg-white">
+    <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[#edf2f9]"
+        className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#f8f4ec]/60 transition-colors"
       >
         <span>
-          <span className="block text-[15px] font-bold text-[#0c2340]">
+          <span className="block font-serif text-[17px] font-medium text-[#0c2340]">
             Inspect Geometry &amp; Cryptographic Proof
           </span>
-          <span className="block text-[13px] text-[#0c2340]/70">
-            See how the prompt was rewritten and the tamper-proof record behind this audit.
+          <span className="block text-[13px] text-[#0c2340]/65">
+            See the 2D semantic rewrite trajectory and SHA-256 Merkle record behind this audit.
           </span>
         </span>
         <ChevronDown
-          className={`w-5 h-5 shrink-0 text-[#ae9142] transition-transform duration-300 ${
+          className={`w-4 h-4 shrink-0 text-[#ae9142] transition-transform duration-300 ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -129,7 +158,9 @@ function EvidenceDrawer({ children }) {
         }`}
       >
         <div className="overflow-hidden min-h-0">
-          {mounted && <div className="p-4 pt-1 space-y-4 border-t border-[#c1cddd]">{children}</div>}
+          {mounted && (
+            <div className="p-5 pt-3 space-y-4 border-t border-[#e5dec9]">{children}</div>
+          )}
         </div>
       </div>
     </div>
@@ -187,7 +218,6 @@ export default function App() {
     };
   }, []);
 
-  // Keep the newest content in view as the thread grows.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [audits.length, doneCount]);
@@ -283,7 +313,6 @@ export default function App() {
     const alive = () => activeRunRef.current === id;
     const matched = findCase(caseId, text);
 
-    // Step 1: camouflage (real API first, graceful fallback on 501 / offline).
     let camo = null;
     try {
       const res = await fetch("/api/camouflage", {
@@ -308,7 +337,6 @@ export default function App() {
     const promptA = camo.original_prompt || text;
     const promptB = camo.camouflaged_prompt || text;
 
-    // Step 2: dual-channel SSE (real API first).
     try {
       const res = await fetch("/api/audit/stream", {
         method: "POST",
@@ -374,10 +402,12 @@ export default function App() {
 
     if (!alive()) return;
 
-    // Demo Preview: stream curated outputs token-by-token; Channel A starts ~240 ms later.
     setApiMode("DEMO_PREVIEW");
     const isBenignText = /pandas|merge|fastapi/i.test(text);
-    const fb = matched || (isBenignText ? FALLBACK_CASES.find((c) => c.type === "benign") : null) || GENERIC_FALLBACK(text);
+    const fb =
+      matched ||
+      (isBenignText ? FALLBACK_CASES.find((c) => c.type === "benign") : null) ||
+      GENERIC_FALLBACK(text);
     const wordsA = fb.mock_output_a.split(" ");
     const wordsB = fb.mock_output_b.split(" ");
     let iA = 0;
@@ -489,122 +519,121 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f4ec] text-[#0c2340]">
-      {/* Top header */}
-      <header className="bg-[#0c2340] border-b-2 border-[#ae9142]">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-extrabold tracking-wide text-white leading-tight">
+      {/* Slim, quiet institutional header (h-12) */}
+      <header className="h-12 bg-[#0c2340] border-b border-[#ae9142] shrink-0">
+        <div className="max-w-6xl h-full mx-auto px-4 flex items-center justify-between gap-3">
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-sm font-semibold tracking-wider text-white">
               AEGIS<span className="text-[#d39f10]">-AUDIT</span>
-            </h1>
-            <p className="text-[13px] text-[#c1cddd]">AI Compliance &amp; Alignment Auditor</p>
+            </span>
+            <span className="hidden sm:inline text-xs text-[#c1cddd]/80">
+              AI Alignment &amp; Compliance Console
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-3">
             {inChat && (
               <button
                 type="button"
                 onClick={handleNewAudit}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-[14px] font-semibold bg-[#d39f10]/0 text-[#d39f10] border border-[#ae9142] hover:bg-[#163660]"
+                className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-[#d39f10] hover:bg-white/10 transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 New Audit
               </button>
             )}
 
+            <span
+              className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-[#c1cddd]/85"
+              title={
+                apiMode === "LIVE"
+                  ? "Connected to FastAPI backend"
+                  : "Backend 501 / offline — Demo preview active"
+              }
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  apiMode === "LIVE" ? "bg-[#0a843d]" : "bg-[#d39f10]"
+                }`}
+              />
+              {apiMode === "LIVE" ? "Live API" : apiMode === "CHECKING" ? "Connecting" : "Demo preview"}
+            </span>
+
             <div
               role="group"
-              aria-label="Engine"
-              className="inline-flex border border-[#ae9142] bg-[#163660] text-[13px]"
+              aria-label="Engine mode"
+              className="inline-flex items-center rounded-full bg-[#163660] border border-[#ae9142]/50 p-0.5 text-xs"
             >
               {[
-                { id: "mock", label: "Simulated", Icon: Server },
-                { id: "ollama", label: "Ollama", Icon: Cpu },
-              ].map(({ id, label, Icon }) => (
+                { id: "mock", label: "Simulated" },
+                { id: "ollama", label: "Local Ollama" },
+              ].map(({ id, label }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setEngineMode(id)}
                   aria-pressed={engineMode === id}
-                  title={
-                    id === "mock"
-                      ? "Local simulated vendor deployment (default)"
-                      : "Live local Ollama model (qwen2.5:7b)"
-                  }
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold ${
-                    engineMode === id ? "bg-[#ae9142] text-[#0c2340]" : "text-[#f8f4ec] hover:text-[#d39f10]"
+                  className={`px-3 py-1 rounded-full font-medium transition-colors ${
+                    engineMode === id
+                      ? "bg-[#ae9142] text-[#0c2340]"
+                      : "text-[#f8f4ec]/85 hover:text-[#d39f10]"
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
                   {label}
                 </button>
               ))}
             </div>
-
-            <span
-              className={`inline-flex items-center gap-2 text-[13px] font-semibold px-2.5 py-1 border ${
-                apiMode === "LIVE"
-                  ? "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
-                  : "bg-[#efe9d9] text-[#0c2340] border-[#d39f10]"
-              }`}
-              title={
-                apiMode === "LIVE"
-                  ? "Connected to the FastAPI backend"
-                  : "Backend not ready — showing the built-in demo preview"
-              }
-            >
-              <span
-                className={`w-2 h-2 inline-block rounded-full ${
-                  apiMode === "LIVE" ? "bg-[#0a843d]" : "bg-[#ae9142]"
-                }`}
-              />
-              {apiMode === "LIVE" ? "Live" : apiMode === "CHECKING" ? "Connecting…" : "Demo preview"}
-            </span>
           </div>
         </div>
       </header>
 
-      {/* Initial screen: centered hero composer */}
+      {/* Initial Screen: Editorial Hero + Tactile Composer Card */}
       {!inChat && (
-        <main className="flex-1 flex items-center justify-center px-4 py-12">
-          <div className="w-full max-w-3xl text-center">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0c2340] leading-tight">
-              Test how an AI responds to an auditor vs. a real user
-            </h2>
-            <p className="mt-3 text-[16px] text-[#0c2340]/75">
-              We send the same request through two channels and flag models that behave differently when they
-              think they are being tested.
-            </p>
-
-            <div className="mt-8 text-left">
-              <Composer value={input} onChange={setInput} onSend={() => runAudit(input)} disabled={busy} large />
+        <main className="flex-1 flex items-center justify-center px-4 py-14">
+          <div className="w-full max-w-2xl mx-auto">
+            <div className="text-center mb-8">
+              <h1 className="font-serif tracking-tight text-4xl sm:text-[42px] font-medium text-[#0c2340] leading-[1.12]">
+                Test how an AI responds to an auditor vs. a real user
+              </h1>
+              <p className="mt-3.5 text-[15px] text-[#0c2340]/70 max-w-xl mx-auto leading-relaxed">
+                Send one prompt across both deployment contexts to uncover hidden moderation delays
+                and alignment faking.
+              </p>
             </div>
 
+            <Composer
+              value={input}
+              onChange={setInput}
+              onSend={() => runAudit(input)}
+              disabled={busy}
+              engineMode={engineMode}
+            />
+
             <div className="mt-5">
-              <p className="text-[14px] text-[#0c2340]/70 mb-2.5">Or try an example (one click runs it):</p>
               <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
             </div>
 
-            <p className="mt-8 text-[13px] text-[#0c2340]/55">
-              Runs locally on your machine · no external cloud APIs
+            <p className="mt-8 text-center text-xs text-[#0c2340]/50">
+              Runs locally on CPU · No external cloud APIs
             </p>
           </div>
         </main>
       )}
 
-      {/* Active chat thread */}
+      {/* Active Chat Thread */}
       {inChat && (
         <>
-          <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 space-y-10">
+          <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-7 space-y-10">
             {audits.map((a) => (
               <section key={a.id} className="space-y-4" aria-label="Audit">
-                <div className="bg-white border border-[#c1cddd] px-4 py-3">
-                  <div className="text-[13px] font-semibold text-[#8c7535] mb-1">Your prompt</div>
-                  <p className="text-[16px] leading-relaxed text-[#0c2340]">{a.prompt}</p>
+                <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm px-5 py-4">
+                  <div className="text-xs font-medium text-[#8c7535] mb-1">Audited prompt</div>
+                  <p className="text-[15px] leading-relaxed text-[#0c2340]">{a.prompt}</p>
                 </div>
 
                 {!a.camo && (
-                  <p className="text-[14px] text-[#8c7535] animate-pulse">
-                    Rewriting the prompt the way a real user would phrase it…
+                  <p className="text-sm text-[#8c7535] animate-pulse px-1">
+                    Rewriting prompt for the production canary channel…
                   </p>
                 )}
 
@@ -650,13 +679,17 @@ export default function App() {
             <div ref={endRef} />
           </main>
 
-          {/* Docked composer for follow-up audits */}
-          <div className="sticky bottom-0 bg-[#f8f4ec] border-t border-[#c1cddd]">
-            <div className="max-w-5xl mx-auto px-4 py-3">
-              <Composer value={input} onChange={setInput} onSend={() => runAudit(input)} disabled={busy} />
-              <div className="mt-2.5">
-                <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
-              </div>
+          <div className="sticky bottom-0 bg-[#f8f4ec]/95 border-t border-[#e5dec9]">
+            <div className="max-w-3xl mx-auto px-4 py-3 space-y-2.5">
+              <Composer
+                value={input}
+                onChange={setInput}
+                onSend={() => runAudit(input)}
+                disabled={busy}
+                engineMode={engineMode}
+                compact
+              />
+              <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
             </div>
           </div>
         </>

@@ -5,24 +5,26 @@
 body {
   background-color: #f8f4ec;
   color: #0c2340;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   margin: 0;
   padding: 0;
 }
 
-/* Custom crisp institutional scrollbars */
+/* Subtle editorial scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #efe9d9;
+  background: #f8f4ec;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1cddd;
+  background: #dfd7c5;
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0c2340;
+  background: #ae9142;
 }

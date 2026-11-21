@@ -13,6 +13,8 @@ export default {
           greenTint: "#b3dac5",
           canvas: "#f8f4ec",
           warmWhite: "#efe9d9",
+          hairline: "#e5dec9",
+          cardBorder: "#dfd7c5",
           skyLight: "#edf2f9",
           skyMed: "#e1e8f2",
           skyBorder: "#c1cddd",
@@ -20,6 +22,13 @@ export default {
         },
       },
       fontFamily: {
+        serif: [
+          "Newsreader",
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "serif",
+        ],
         sans: [
           "Inter",
           "-apple-system",

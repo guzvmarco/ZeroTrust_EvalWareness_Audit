@@ -12,11 +12,6 @@ import {
 } from "recharts";
 import { CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 
-/**
- * Custom SVG layer: arrow from the original prompt (x) to the rewritten prompt (x').
- * Labels use a white halo and sit directly above their points, so they never collide
- * with the zone captions (which are rendered at the top of each shaded zone).
- */
 function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
   if (!xAxisMap || !yAxisMap || !pcaBefore || !pcaAfter) return null;
   const xAxis = Object.values(xAxisMap)[0];
@@ -57,7 +52,7 @@ function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
         textAnchor="middle"
         fill="#991b1b"
         fontSize="12"
-        fontWeight="700"
+        fontWeight="600"
         style={halo}
       >
         Original prompt
@@ -70,7 +65,7 @@ function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
         textAnchor="middle"
         fill="#0a843d"
         fontSize="12"
-        fontWeight="700"
+        fontWeight="600"
         style={halo}
       >
         Rewritten prompt
@@ -84,14 +79,14 @@ function CustomScatterTooltip({ active, payload }) {
   const pt = payload[0]?.payload;
   if (!pt) return null;
   return (
-    <div className="bg-white border border-[#0c2340] px-3 py-2 text-xs max-w-xs">
+    <div className="bg-white rounded-xl border border-[#dfd7c5] shadow-sm px-3 py-2 text-xs max-w-xs">
       <div className="font-semibold text-[#0c2340] mb-1">{pt.label || pt.group}</div>
       {typeof pt.cosine === "number" && (
         <div className="font-mono text-[11px] text-[#0a843d] mb-1">
           cos(e_x&apos;, e_x) = {pt.cosine.toFixed(3)}
         </div>
       )}
-      {pt.text && <div className="text-[12px] text-[#0c2340] leading-snug">{pt.text}</div>}
+      {pt.text && <div className="text-[12px] text-[#0c2340]/85 leading-snug">{pt.text}</div>}
     </div>
   );
 }
@@ -128,47 +123,49 @@ export default function PcaScatterPlot({
   const axisTick = { fontSize: 11, fill: "#0c2340" };
 
   return (
-    <div className="bg-white border border-[#c1cddd]">
-      <div className="px-4 py-3 border-b border-[#c1cddd] bg-[#edf2f9] flex flex-wrap items-start justify-between gap-2">
+    <div className="bg-white rounded-2xl border border-[#e5dec9] overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-[#e5dec9] bg-[#f8f4ec]/60 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-[15px] font-bold text-[#0c2340]">How the prompt was rewritten</h3>
+          <h3 className="font-serif text-[18px] font-medium text-[#0c2340]">
+            How the prompt was rewritten
+          </h3>
           <p className="text-[13px] text-[#0c2340]/70">
             Same technical request, reworded to sound like an everyday user instead of a benchmark.
           </p>
         </div>
         <span
-          className={`text-[12px] font-semibold px-2.5 py-1 border inline-flex items-center gap-1.5 ${
+          className={`text-[12px] font-semibold px-3 py-1 rounded-full border inline-flex items-center gap-1.5 ${
             meetsThreshold
-              ? "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
-              : "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+              ? "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
+              : "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]/50"
           }`}
-          title="Cosine similarity between the original and rewritten prompt embeddings (all-MiniLM-L6-v2). Must be at least 0.78 to count as the same request."
+          title="Cosine similarity between the original and rewritten prompt embeddings (all-MiniLM-L6-v2)."
         >
-          {meetsThreshold ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+          {meetsThreshold ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
           Same meaning · cos {cosine.toFixed(2)} {meetsThreshold ? "≥ 0.78" : "< 0.78"}
         </span>
       </div>
 
       <div className="p-4">
-        <div className="h-72 w-full border border-[#c1cddd] bg-white">
+        <div className="h-72 w-full rounded-xl border border-[#e5dec9] bg-white overflow-hidden">
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 12, right: 20, bottom: 8, left: -8 }}>
-              <CartesianGrid stroke="#e1e8f2" strokeDasharray="3 3" />
+              <CartesianGrid stroke="#edf2f9" strokeDasharray="3 3" />
               <XAxis
                 type="number"
                 dataKey="x"
                 domain={[-3.6, 3.6]}
                 tick={axisTick}
-                tickLine={{ stroke: "#c1cddd" }}
-                axisLine={{ stroke: "#c1cddd" }}
+                tickLine={{ stroke: "#e5dec9" }}
+                axisLine={{ stroke: "#e5dec9" }}
               />
               <YAxis
                 type="number"
                 dataKey="y"
                 domain={[-2.2, 2.2]}
                 tick={axisTick}
-                tickLine={{ stroke: "#c1cddd" }}
-                axisLine={{ stroke: "#c1cddd" }}
+                tickLine={{ stroke: "#e5dec9" }}
+                axisLine={{ stroke: "#e5dec9" }}
               />
               <Tooltip content={<CustomScatterTooltip />} />
 
@@ -178,7 +175,7 @@ export default function PcaScatterPlot({
                 y1={-2.05}
                 y2={2.05}
                 fill="#fee2e2"
-                fillOpacity={0.4}
+                fillOpacity={0.35}
                 stroke="#fecaca"
                 label={{
                   value: "Looks like a benchmark (c_eval)",
@@ -194,9 +191,9 @@ export default function PcaScatterPlot({
                 y1={-2.05}
                 y2={2.05}
                 fill="#b3dac5"
-                fillOpacity={0.5}
+                fillOpacity={0.45}
                 stroke="#0a843d"
-                strokeOpacity={0.35}
+                strokeOpacity={0.3}
                 label={{
                   value: "Looks like a real user (c_civil)",
                   position: "insideTop",
@@ -219,14 +216,14 @@ export default function PcaScatterPlot({
 
         {frozenEntities.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] font-semibold text-[#0c2340] inline-flex items-center gap-1">
+            <span className="text-[13px] font-medium text-[#0c2340]/80 inline-flex items-center gap-1">
               <Lock className="w-3.5 h-3.5 text-[#ae9142]" />
               Kept unchanged:
             </span>
             {frozenEntities.map((e) => (
               <span
                 key={e}
-                className="font-mono text-[12px] px-2 py-0.5 bg-[#edf2f9] border border-[#c1cddd] text-[#0c2340]"
+                className="font-mono text-[12px] px-2.5 py-0.5 rounded-full bg-[#f8f4ec] border border-[#e5dec9] text-[#0c2340]"
               >
                 {e}
               </span>

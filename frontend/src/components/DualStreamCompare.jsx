@@ -8,7 +8,7 @@ function renderInline(text, keyPrefix) {
       return (
         <code
           key={`${keyPrefix}-${i}`}
-          className="font-mono text-[13px] bg-[#edf2f9] border border-[#c1cddd] px-1 py-px"
+          className="font-mono text-[13px] bg-[#f8f4ec] border border-[#e5dec9] rounded-md px-1.5 py-0.5 text-[#0c2340]"
         >
           {chunk.slice(1, -1)}
         </code>
@@ -35,13 +35,13 @@ export function RichText({ text }) {
     <div className="text-[15px] leading-relaxed text-[#0c2340]">
       {parts.map((p, i) =>
         p.type === "code" ? (
-          <figure key={i} className="my-2.5 border border-[#c1cddd] bg-[#f8f4ec]">
+          <figure key={i} className="my-3 rounded-xl border border-[#e5dec9] bg-[#f8f4ec] overflow-hidden">
             {p.lang && (
-              <figcaption className="px-3 py-1 text-[11px] font-mono uppercase tracking-wide text-[#8c7535] border-b border-[#c1cddd] bg-[#efe9d9]">
+              <figcaption className="px-3.5 py-1.5 text-[11px] font-mono uppercase tracking-wide text-[#8c7535] border-b border-[#e5dec9] bg-[#efe9d9]/60">
                 {p.lang}
               </figcaption>
             )}
-            <pre className="px-3 py-2.5 overflow-x-auto text-[13px] leading-snug font-mono text-[#0c2340]">
+            <pre className="px-3.5 py-3 overflow-x-auto text-[13px] leading-snug font-mono text-[#0c2340]">
               <code>{p.value}</code>
             </pre>
           </figure>
@@ -63,25 +63,29 @@ function hostOf(url) {
   }
 }
 
-function ResponseCard({ title, subtitle, host, stripClass, stream, streaming, accent, children }) {
+function ResponseCard({ title, subtitle, host, badgeClass, stream, streaming, accent, children }) {
   return (
-    <div className="bg-white border border-[#c1cddd] flex flex-col">
-      <div className={`px-4 py-3 border-b border-[#c1cddd] ${stripClass}`}>
-        <h3 className="text-[16px] font-bold text-[#0c2340]">{title}</h3>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-[#0c2340]/75">
-          <span>{subtitle}</span>
-          <span aria-hidden="true">·</span>
-          <span className="font-mono text-[12px]">{host}</span>
+    <div className="bg-white rounded-2xl border border-[#e5dec9] shadow-sm p-5 flex flex-col">
+      <div className="pb-3.5 border-b border-[#e5dec9]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-serif text-[19px] font-medium tracking-tight text-[#0c2340]">
+            {title}
+          </h3>
+          <span className={`font-mono text-[11px] px-2.5 py-0.5 rounded-full ${badgeClass}`}>
+            {host}
+          </span>
         </div>
+        <div className="mt-1 text-[13px] text-[#0c2340]/65">{subtitle}</div>
         {children}
       </div>
-      <div className="px-4 py-4 min-h-[160px]">
+
+      <div className="pt-4 min-h-[160px]">
         {stream ? (
           <>
             <RichText text={stream} />
             {streaming && (
               <span
-                className="inline-block w-2 h-4 ml-0.5 align-middle animate-pulse"
+                className="inline-block w-2 h-4 ml-1 rounded-sm align-middle animate-pulse"
                 style={{ backgroundColor: accent }}
               />
             )}
@@ -95,7 +99,7 @@ function ResponseCard({ title, subtitle, host, stripClass, stream, streaming, ac
 }
 
 /**
- * Two equal columns: what the model says to an official auditor vs. to a real user.
+ * Two equal columns: Official Auditor View vs. Real-World User View.
  */
 export default function DualStreamCompare({
   camo,
@@ -118,7 +122,7 @@ export default function DualStreamCompare({
         title="Official Auditor View"
         subtitle={`Auditor Harness · ${msA}`}
         host={hostOf(ctxA.origin_url)}
-        stripClass="bg-[#e1e8f2]"
+        badgeClass="bg-[#edf2f9] text-[#0c2340] border border-[#e1e8f2]"
         stream={streamA}
         streaming={streaming}
         accent="#0c2340"
@@ -128,27 +132,29 @@ export default function DualStreamCompare({
         title="Real-World User View"
         subtitle={`Production Canary · ${msB}`}
         host={hostOf(ctxB.origin_url)}
-        stripClass="bg-[#efe9d9]"
+        badgeClass="bg-[#efe9d9]/80 text-[#0c2340] border border-[#e5dec9]"
         stream={streamB}
         streaming={streaming}
         accent="#0a843d"
       >
         {typeof cosine === "number" && (
-          <div className="mt-2">
+          <div className="mt-2.5">
             <button
               type="button"
               onClick={() => setShowRewrite((v) => !v)}
               aria-expanded={showRewrite}
-              className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 bg-white border border-[#c1cddd] text-[#0c2340] hover:border-[#0c2340]"
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 rounded-full bg-[#f8f4ec] border border-[#e5dec9] text-[#0c2340] hover:bg-[#efe9d9] transition-colors"
             >
               {Math.round(cosine * 100)}% intent match · cos {cosine.toFixed(2)}
               <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform ${showRewrite ? "rotate-180" : ""}`}
+                className={`w-3.5 h-3.5 text-[#8c7535] transition-transform ${
+                  showRewrite ? "rotate-180" : ""
+                }`}
               />
             </button>
             {showRewrite && (
-              <p className="mt-2 text-[13px] leading-snug text-[#0c2340] bg-white border border-[#c1cddd] px-3 py-2">
-                <span className="font-semibold">Rewritten prompt sent to this channel: </span>
+              <p className="mt-2.5 text-[13px] leading-relaxed text-[#0c2340]/85 bg-[#f8f4ec] border border-[#e5dec9] rounded-xl px-3.5 py-2.5">
+                <span className="font-semibold text-[#0c2340]">Rewritten prompt sent: </span>
                 {camo?.camouflaged_prompt}
               </p>
             )}
