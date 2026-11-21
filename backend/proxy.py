@@ -62,12 +62,18 @@ _load_dotenv_if_present()
 logger = logging.getLogger("aegis.proxy")
 SIMULATED_VENDOR_MODEL = "simulated-adversarial-vendor"
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+CLOUDFLARE_ACCOUNT_ID = "206ce4553172f7a5c53fc159de1b8f1f"
+CLOUDFLARE_CHAT_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1/chat/completions"
+)
 GROQ_MODELS = [
+    "@cf/openai/gpt-oss-120b",
+    "@cf/openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
     "qwen/qwen3.8-27b",
 ]
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY2", "") or os.environ.get("GROQ_API_KEY", "")
 
 
 @dataclass
@@ -226,8 +232,12 @@ class DualChannelProxy:
         return (
             engine_mode == "groq"
             or p == "groq"
+            or m.startswith("@cf/")
             or m.startswith("openai/")
             or m.startswith("qwen/")
+            or m.startswith("google/")
+            or m.startswith("nvidia/")
+            or m.endswith(":free")
         )
 
     @staticmethod
@@ -296,6 +306,11 @@ class DualChannelProxy:
         target_url, model_name, resolved_provider = self._resolve_target(
             request, engine_mode
         )
+        is_cloudflare = model_name.startswith("@cf/") or "cloudflare.com" in target_url.lower()
+        if is_cloudflare and ("groq.com" in target_url or "openrouter.ai" in target_url):
+            target_url = CLOUDFLARE_CHAT_URL
+        elif ":free" in model_name and "groq.com" in target_url:
+            target_url = "https://openrouter.ai/api/v1/chat/completions"
         nonce_prompt = self.prepend_anti_cache_nonce(request.prompt)
         layers = request.metadata_layers
         ctx = request.deployment_context
@@ -311,11 +326,15 @@ class DualChannelProxy:
         messages.append({"role": "user", "content": nonce_prompt})
 
         # Keep reasoning enabled so evaluation awareness can surface during CoT;
-        # 260 tokens leaves room for reasoning plus a complete visible answer.
+        # Cloudflare @cf/openai/gpt-oss-120b uses ~100 tokens for reasoning before visible content.
         max_tok = (
-            260
-            if resolved_provider == "groq"
-            else min(request.max_tokens, 160)
+            320
+            if is_cloudflare
+            else (
+                min(max(64, request.max_tokens), 260)
+                if resolved_provider == "groq"
+                else min(request.max_tokens, 160)
+            )
         )
         body: dict[str, object] = {
             "model": model_name,
@@ -325,7 +344,9 @@ class DualChannelProxy:
             "seed": request.seed,
             "messages": messages,
         }
-        if resolved_provider == "groq" and model_name.startswith("openai/gpt-oss"):
+        if resolved_provider == "groq" and (
+            model_name.startswith("openai/gpt-oss") or model_name.startswith("@cf/openai/gpt-oss")
+        ):
             body["reasoning_effort"] = "low"
 
         if layers.provider_api_identity:
@@ -347,14 +368,33 @@ class DualChannelProxy:
             "Content-Type": "application/json",
         }
         explicit_key = (request.api_key or "").strip()
+        is_openrouter = "openrouter.ai" in target_url.lower() or ":free" in model_name
         if resolved_provider == "groq":
-            api_key = (
-                explicit_key
-                or os.environ.get("GROQ_API_KEY", "").strip()
-                or GROQ_API_KEY.strip()
-            )
+            if is_cloudflare:
+                api_key = (
+                    explicit_key
+                    or os.environ.get("claude_fare", "").strip()
+                    or os.environ.get("CLAUDE_FARE", "").strip()
+                    or os.environ.get("CLOUDFLARE_API_KEY", "").strip()
+                )
+                missing_name = "claude_fare"
+            elif is_openrouter:
+                api_key = (
+                    explicit_key
+                    or os.environ.get("OPEN_ROUTER_API_KEY", "").strip()
+                    or os.environ.get("OPENROUTER_API_KEY", "").strip()
+                )
+                missing_name = "OPEN_ROUTER_API_KEY"
+            else:
+                api_key = (
+                    explicit_key
+                    or os.environ.get("GROQ_API_KEY2", "").strip()
+                    or os.environ.get("GROQ_API_KEY", "").strip()
+                    or GROQ_API_KEY.strip()
+                )
+                missing_name = "GROQ_API_KEY2 / GROQ_API_KEY"
             if not api_key:
-                err_text = f"[Channel {channel} error: GROQ_API_KEY is not configured. Set it in .env or enter it in the UI.]"
+                err_text = f"[Channel {channel} error: {missing_name} is not configured. Set it in .env or enter it in the UI.]"
                 yield ChannelStreamChunk(
                     channel=channel,
                     token=err_text,
@@ -365,7 +405,7 @@ class DualChannelProxy:
                     channel=channel,
                     output=err_text,
                     ttft_ms=0.0,
-                    error="Missing GROQ_API_KEY",
+                    error=f"Missing {missing_name}",
                 )
                 return
             headers["Authorization"] = f"Bearer {api_key}"
@@ -417,19 +457,38 @@ class DualChannelProxy:
                         ) as response:
                             if response.status_code == 429:
                                 err_body = (await response.aread()).decode("utf-8", errors="replace")
-                                if retry_idx < max_retries_429:
-                                    wait_s = self._parse_retry_after_seconds(
-                                        response.headers, err_body
-                                    )
+                                wait_s = self._parse_retry_after_seconds(
+                                    response.headers, err_body
+                                )
+                                can_retry = retry_idx < max_retries_429 and (
+                                    not request.large_batch_mode
+                                    or wait_s <= 95.0
+                                    or (retry_idx == 0 and wait_s <= 130.0)
+                                )
+                                if can_retry:
+                                    total_wait = wait_s + 0.5
                                     logger.warning(
                                         "Channel %s HTTP 429 from %s; sleeping %.2fs (retry %d/%d)",
                                         channel,
                                         attempt_url,
-                                        wait_s + 0.5,
+                                        total_wait,
                                         retry_idx + 1,
                                         max_retries_429,
                                     )
-                                    await asyncio.sleep(wait_s + 0.5)
+                                    if request.large_batch_mode:
+                                        remaining = total_wait
+                                        while remaining > 0:
+                                            step = min(4.0, remaining)
+                                            await asyncio.sleep(step)
+                                            remaining -= step
+                                            yield ChannelStreamChunk(
+                                                channel=channel,
+                                                token="",
+                                                elapsed_ms=(time.monotonic_ns() - start_ns) / 1_000_000.0,
+                                                is_first_token=False,
+                                            )
+                                    else:
+                                        await asyncio.sleep(total_wait)
                                     continue
                                 raise RuntimeError(
                                     f"HTTP 429 from {attempt_url} (model={model_name}): {err_body[:240]}"
@@ -446,7 +505,17 @@ class DualChannelProxy:
                                         retry_idx + 1,
                                         max_retries_transient,
                                     )
-                                    await asyncio.sleep(10.0)
+                                    if request.large_batch_mode:
+                                        for _ in range(3):
+                                            await asyncio.sleep(3.3)
+                                            yield ChannelStreamChunk(
+                                                channel=channel,
+                                                token="",
+                                                elapsed_ms=(time.monotonic_ns() - start_ns) / 1_000_000.0,
+                                                is_first_token=False,
+                                            )
+                                    else:
+                                        await asyncio.sleep(10.0)
                                     continue
                                 raise RuntimeError(
                                     f"HTTP {response.status_code} from {attempt_url} (model={model_name}): {err_body[:240]}"

@@ -56,6 +56,7 @@ class ChannelRequest(BaseModel):
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
+    large_batch_mode: bool = False
 
 
 class ChannelTelemetry(BaseModel):
@@ -128,6 +129,7 @@ class AuditStreamRequest(BaseModel):
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
+    large_batch_mode: bool = False
     deployment_context_A: DeploymentContext = Field(
         default_factory=lambda: DEFAULT_AUDITOR_CONTEXT.model_copy()
     )
@@ -137,7 +139,7 @@ class AuditStreamRequest(BaseModel):
 
 
 class BatchRunRequest(BaseModel):
-    batch_size: int = Field(default=9, ge=1, le=50)
+    batch_size: int = Field(default=9, ge=1, le=100)
     lang: Literal["en", "es"] = "en"
     seed: int = 42
     temperature: float = 0.2
@@ -148,6 +150,7 @@ class BatchRunRequest(BaseModel):
     provider: str | None = None
     api_key: str | None = None
     metadata_layers: MetadataLayersConfig = Field(default_factory=MetadataLayersConfig)
+    large_batch_mode: bool = False
 
 
 class AuditResult(BaseModel):

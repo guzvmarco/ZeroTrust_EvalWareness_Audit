@@ -9,10 +9,14 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8000",
         changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 0,
       },
       "/health": {
         target: "http://localhost:8000",
         changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 0,
       },
     },
   },

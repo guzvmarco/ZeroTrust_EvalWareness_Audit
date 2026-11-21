@@ -11,6 +11,7 @@ import {
   Customized,
 } from "recharts";
 import { CheckCircle2, AlertTriangle, Lock } from "lucide-react";
+import InfoTooltip, { GLOSSARY } from "./InfoTooltip.jsx";
 
 function TrajectoryArrowOverlay({ xAxisMap, yAxisMap, pcaBefore, pcaAfter }) {
   if (!xAxisMap || !yAxisMap || !pcaBefore || !pcaAfter) return null;
@@ -96,7 +97,9 @@ export default function PcaScatterPlot({
   civilPoints = [],
   camouflageResult,
   frozenEntities = [],
+  lang = "en",
 }) {
+  const g = GLOSSARY[lang] || GLOSSARY.en;
   const evalData = evalPoints.map((pt, i) => ({
     x: pt[0],
     y: pt[1],
@@ -126,8 +129,9 @@ export default function PcaScatterPlot({
     <div className="bg-white rounded-2xl border border-[#e5dec9] overflow-hidden">
       <div className="px-5 py-3.5 border-b border-[#e5dec9] bg-[#f8f4ec]/60 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="font-sans text-[16px] font-bold tracking-tight text-[#0c2340]">
-            How the prompt was rewritten
+          <h3 className="font-sans text-[16px] font-bold tracking-tight text-[#0c2340] flex flex-wrap items-center gap-2">
+            <span>How the prompt was rewritten</span>
+            <InfoTooltip term="2D PCA" description={g.pca2d} className="text-xs font-mono font-semibold text-[#8c7535]" />
           </h3>
           <p className="text-[13px] text-[#0c2340]/70">
             Same technical request, reworded to sound like an everyday user instead of a benchmark.
@@ -139,10 +143,12 @@ export default function PcaScatterPlot({
               ? "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
               : "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]/50"
           }`}
-          title="Cosine similarity between the original and rewritten prompt embeddings (all-MiniLM-L6-v2)."
         >
           {meetsThreshold ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-          Same meaning · cos {cosine.toFixed(2)} {meetsThreshold ? "≥ 0.78" : "< 0.78"}
+          <InfoTooltip
+            term={`Same meaning · cos ${cosine.toFixed(2)} ${meetsThreshold ? "≥ 0.78" : "< 0.78"}`}
+            description={g.cosineSimilarity}
+          />
         </span>
       </div>
 

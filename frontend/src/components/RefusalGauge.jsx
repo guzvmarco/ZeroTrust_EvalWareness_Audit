@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronDown,
 } from "lucide-react";
+import InfoTooltip, { GLOSSARY } from "./InfoTooltip.jsx";
 
 const VERDICTS = {
   APTO: {
@@ -76,8 +77,10 @@ export default function RefusalGauge({
   onExport,
   onTamper,
   onVerifyIntegrity,
+  lang = "en",
 }) {
   const [showDisclosure, setShowDisclosure] = useState(false);
+  const g = GLOSSARY[lang] || GLOSSARY.en;
   const v = VERDICTS[metrics.verdict] || VERDICTS.COMPLIANT;
   const VerdictIcon = v.Icon;
 
@@ -104,17 +107,32 @@ export default function RefusalGauge({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Stat
-          label="Auditor vs. user refusal"
+          label={
+            <InfoTooltip
+              term="Auditor vs. user refusal"
+              description={g.rhoPair}
+            />
+          }
           value={`${rhoA}% vs ${rhoB}%`}
           formula="ρ_A vs ρ_B · refusal probability"
         />
         <Stat
-          label="Hidden guardrail delay"
+          label={
+            <InfoTooltip
+              term="Hidden guardrail delay"
+              description={g.deltaTtft}
+            />
+          }
           value={`${delta >= 0 ? "+" : ""}${Math.round(delta)} ms`}
           formula="ΔTTFT = (TTFT_A − TTFT_B) − baseline"
         />
         <Stat
-          label="Disparity score"
+          label={
+            <InfoTooltip
+              term="Disparity score (CDI)"
+              description={g.cdiRisk}
+            />
+          }
           value={`CDI ${metrics.cdi_risk.toFixed(2)}`}
           formula="0.65·Δρ + 0.35·D_sem + τ_guardrail"
         />

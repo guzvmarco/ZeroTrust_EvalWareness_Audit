@@ -32,6 +32,7 @@ import DualStreamCompare from "./components/DualStreamCompare.jsx";
 import RefusalGauge from "./components/RefusalGauge.jsx";
 import MerkleCustodyBar from "./components/MerkleCustodyBar.jsx";
 import SuiteReportDrawer from "./components/SuiteReportDrawer.jsx";
+import InfoTooltip, { GLOSSARY } from "./components/InfoTooltip.jsx";
 import {
   DEFAULT_AUDITOR_CTX,
   DEFAULT_CANARY_CTX,
@@ -43,9 +44,15 @@ import {
 } from "./demoData.js";
 
 const ZERO_HASH = "0".repeat(64);
+const CLOUDFLARE_BASE_URL =
+  "https://api.cloudflare.com/client/v4/accounts/206ce4553172f7a5c53fc159de1b8f1f/ai/v1";
 const GROQ_MODELS = [
+  "@cf/openai/gpt-oss-120b",
+  "@cf/openai/gpt-oss-20b",
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
+  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3.5-lightning:free",
   "qwen/qwen3.8-27b",
 ];
 
@@ -225,26 +232,6 @@ const UI_COPY = {
   },
 };
 
-function InfoTooltip({ term, description, className = "" }) {
-  return (
-    <span className={`relative inline-flex items-center gap-1 group ${className}`}>
-      <span className="border-b border-dotted border-slate-400 cursor-help">{term}</span>
-      <span
-        aria-hidden="true"
-        className="text-[10px] font-mono text-slate-400 group-hover:text-[#0C2340] transition-colors cursor-help"
-      >
-        ⓘ
-      </span>
-      <span
-        role="tooltip"
-        className="opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 bottom-full left-1/2 -translate-x-1/2 mb-2 fixed sm:absolute bg-[#0C2340] text-white text-xs font-normal leading-relaxed rounded-lg shadow-lg p-3 w-64 z-50 pointer-events-none transition-all duration-150 text-left"
-      >
-        {description}
-      </span>
-    </span>
-  );
-}
-
 function shortCategoryLabel(cat, lang = "en") {
   const s = (cat || "").toLowerCase();
   const isEs = lang === "es";
@@ -323,7 +310,15 @@ function buildCategoryChartData(suiteSummary, batchItems, lang = "en") {
 function resolveEngineMode(modelName) {
   const m = (modelName || "").trim();
   if (m === "simulated-adversarial-vendor") return "mock";
-  if (m.startsWith("openai/") || m.startsWith("qwen/")) return "groq";
+  if (
+    m.startsWith("@cf/") ||
+    m.startsWith("openai/") ||
+    m.startsWith("qwen/") ||
+    m.startsWith("google/") ||
+    m.startsWith("nvidia/") ||
+    m.endsWith(":free")
+  )
+    return "groq";
   return "ollama";
 }
 
@@ -576,9 +571,13 @@ function EvaluationSetupPanel({
                   <option key={m} value={m} className="bg-white text-[#0C2340]">
                     {m === "simulated-adversarial-vendor"
                       ? "simulated-adversarial-vendor (fallback)"
-                      : resolveEngineMode(m) === "groq"
-                        ? `${m} (Groq)`
-                        : `${m} (Ollama)`}
+                      : m.startsWith("@cf/")
+                        ? `${m} (Cloudflare)`
+                        : m.endsWith(":free")
+                          ? `${m} (OpenRouter)`
+                          : resolveEngineMode(m) === "groq"
+                            ? `${m} (Groq)`
+                            : `${m} (Ollama)`}
                   </option>
                 ))}
               </select>
@@ -590,6 +589,7 @@ function EvaluationSetupPanel({
               { n: 1, label: "1" },
               { n: 9, label: copy.quickDemoPreset },
               { n: 50, label: "50" },
+              { n: 100, label: "100" },
             ].map((preset) => (
               <button
                 key={preset.n}
@@ -661,7 +661,7 @@ function EvaluationSetupPanel({
         <input
           type="range"
           min={1}
-          max={50}
+          max={100}
           value={batchSize}
           disabled={batchRunning}
           onChange={(e) => onChangeBatchSize(Number(e.target.value))}
@@ -792,6 +792,20 @@ function EvaluationSetupPanel({
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
+                onClick={() => {
+                  onChangeBaseUrl?.(CLOUDFLARE_BASE_URL);
+                  onChangeModel?.("@cf/openai/gpt-oss-120b");
+                }}
+                className={`px-2 py-0.5 rounded-full font-mono text-[10px] border transition-colors ${
+                  baseUrl === CLOUDFLARE_BASE_URL
+                    ? "bg-[#0c2340] text-[#d39f10] border-[#0c2340]"
+                    : "bg-[#f8f4ec] text-[#0c2340] border-[#dfd7c5] hover:bg-[#efe9d9]"
+                }`}
+              >
+                Cloudflare AI
+              </button>
+              <button
+                type="button"
                 onClick={() => onChangeBaseUrl?.("https://api.groq.com/openai/v1")}
                 className={`px-2 py-0.5 rounded-full font-mono text-[10px] border transition-colors ${
                   baseUrl === "https://api.groq.com/openai/v1"
@@ -800,6 +814,20 @@ function EvaluationSetupPanel({
                 }`}
               >
                 Groq Cloud
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeBaseUrl?.("https://openrouter.ai/api/v1");
+                  onChangeModel?.("google/gemma-4-31b-it:free");
+                }}
+                className={`px-2 py-0.5 rounded-full font-mono text-[10px] border transition-colors ${
+                  baseUrl === "https://openrouter.ai/api/v1"
+                    ? "bg-[#0c2340] text-[#d39f10] border-[#0c2340]"
+                    : "bg-[#f8f4ec] text-[#0c2340] border-[#dfd7c5] hover:bg-[#efe9d9]"
+                }`}
+              >
+                OpenRouter Free
               </button>
               <button
                 type="button"
@@ -914,7 +942,7 @@ export default function App() {
   const stepWheelTsRef = useRef(0);
   const [providerTab, setProviderTab] = useState("api"); // "api" | "local"
   const [engineMode, setEngineMode] = useState("groq"); // "ollama" | "groq" | "mock"
-  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
+  const [selectedModel, setSelectedModel] = useState("@cf/openai/gpt-oss-120b");
   const [availableModels, setAvailableModels] = useState([
     ...GROQ_MODELS,
     "qwen2.5:7b",
@@ -923,7 +951,7 @@ export default function App() {
   const [ollamaConnected, setOllamaConnected] = useState(false);
   const [groqConfigured, setGroqConfigured] = useState(false);
   const [groqApiKey, setGroqApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.groq.com/openai/v1");
+  const [baseUrl, setBaseUrl] = useState(CLOUDFLARE_BASE_URL);
 
   const [batchSize, setBatchSize] = useState(9);
   const [uiLang, setUiLang] = useState("en");
@@ -1135,6 +1163,7 @@ export default function App() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let receivedComplete = false;
 
         const processBlock = (block) => {
           let evt = "message";
@@ -1153,6 +1182,7 @@ export default function App() {
                 title: parsed.title || parsed.current_id || "",
               });
             } else if (evt === "batch_complete") {
+              receivedComplete = true;
               setSuiteSummary(parsed);
               setLastSummary(parsed);
               lastRootRef.current = parsed.merkle_root || lastRootRef.current;
@@ -1178,6 +1208,13 @@ export default function App() {
           const blocks = buffer.split("\n\n");
           buffer = blocks.pop() || "";
           for (const b of blocks) processBlock(b);
+        }
+        if (!receivedComplete) {
+          setUploadError(
+            batchLang === "es"
+              ? "La conexión del lote se interrumpió antes de sellar el dossier (posible límite de cuota de API)."
+              : "Batch stream ended before sealing the dossier (likely API rate/quota interruption)."
+          );
         }
         setBatchRunning(false);
         return;
@@ -1750,7 +1787,9 @@ export default function App() {
     setProviderTab(tab);
     setBaseUrl(
       tab === "api"
-        ? "https://api.groq.com/openai/v1"
+        ? selectedModel.startsWith("@cf/")
+          ? CLOUDFLARE_BASE_URL
+          : "https://api.groq.com/openai/v1"
         : "http://localhost:11434/v1"
     );
     const list = tab === "api" ? apiModels : localModels;
@@ -1764,6 +1803,13 @@ export default function App() {
     setSelectedModel(newModel);
     const mode = resolveEngineMode(newModel);
     setEngineMode(mode);
+    if (newModel.startsWith("@cf/")) {
+      setBaseUrl(CLOUDFLARE_BASE_URL);
+    } else if (newModel.endsWith(":free")) {
+      setBaseUrl("https://openrouter.ai/api/v1");
+    } else if (mode === "groq") {
+      setBaseUrl("https://api.groq.com/openai/v1");
+    }
   };
 
   const transitionToStep = (nextStep) => {
@@ -2548,23 +2594,39 @@ export default function App() {
                     {/* Sleek Monospace Per-Probe Telemetry Strip */}
                     <div className="rounded-xl bg-[#0c2340] text-[#f8f4ec] border border-[#ae9142]/70 px-4 py-2.5 font-mono text-[11px] flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 shadow-sm">
                       <span>
-                        <strong className="text-[#d39f10]">cdi_risk:</strong>{" "}
+                        <InfoTooltip
+                          dark
+                          term={<strong className="text-[#d39f10]">cdi_risk:</strong>}
+                          description={(GLOSSARY[batchLang] || GLOSSARY.en).cdiRisk}
+                        />{" "}
                         {Number(a.metrics.cdi_risk ?? 0).toFixed(4)}
                       </span>
                       <span>
-                        <strong className="text-[#d39f10]">cdi_signed:</strong>{" "}
+                        <InfoTooltip
+                          dark
+                          term={<strong className="text-[#d39f10]">cdi_signed:</strong>}
+                          description={(GLOSSARY[batchLang] || GLOSSARY.en).cdiSigned}
+                        />{" "}
                         {Number(a.metrics.cdi_signed ?? 0) >= 0 ? "+" : ""}
                         {Number(a.metrics.cdi_signed ?? 0).toFixed(4)}
                       </span>
                       <span>
-                        <strong className="text-[#d39f10]">refusal_delta:</strong>{" "}
+                        <InfoTooltip
+                          dark
+                          term={<strong className="text-[#d39f10]">refusal_delta:</strong>}
+                          description={(GLOSSARY[batchLang] || GLOSSARY.en).refusalDelta}
+                        />{" "}
                         {Number(a.metrics.rho_A ?? 0) - Number(a.metrics.rho_B ?? 0) >= 0
                           ? "+"
                           : ""}
                         {(Number(a.metrics.rho_A ?? 0) - Number(a.metrics.rho_B ?? 0)).toFixed(4)}
                       </span>
                       <span>
-                        <strong className="text-[#d39f10]">ttft_A vs ttft_B:</strong>{" "}
+                        <InfoTooltip
+                          dark
+                          term={<strong className="text-[#d39f10]">ttft_A vs ttft_B:</strong>}
+                          description={(GLOSSARY[batchLang] || GLOSSARY.en).ttftPair}
+                        />{" "}
                         {Number(a.metrics.ttft_A ?? 0).toFixed(1)} ms vs{" "}
                         {Number(a.metrics.ttft_B ?? 0).toFixed(1)} ms (Δ{" "}
                         {Number(a.metrics.ttft_A ?? 0) - Number(a.metrics.ttft_B ?? 0) >= 0
@@ -2576,7 +2638,12 @@ export default function App() {
                         ms)
                       </span>
                       <span>
-                        <strong className="text-[#d39f10]">logprobs:</strong> [
+                        <InfoTooltip
+                          dark
+                          term={<strong className="text-[#d39f10]">logprobs:</strong>}
+                          description={(GLOSSARY[batchLang] || GLOSSARY.en).logprobs}
+                        />{" "}
+                        [
                         {(a.leaf?.logprobs || [-0.0412, -0.1184, -0.0725])
                           .map((lp) => Number(lp).toFixed(3))
                           .join(", ")}
@@ -2590,6 +2657,7 @@ export default function App() {
                       onExport={handleExport}
                       onTamper={() => handleTamper(a)}
                       onVerifyIntegrity={() => handleVerifyIntegrity(a.id)}
+                      lang={batchLang}
                     />
                     <EvidenceDrawer lang={batchLang}>
                       <PcaScatterPlot
@@ -2597,12 +2665,14 @@ export default function App() {
                         civilPoints={civilCluster}
                         camouflageResult={a.camo}
                         frozenEntities={a.frozen}
+                        lang={batchLang}
                       />
                       <MerkleCustodyBar
                         merkleRoot={a.merkleRoot || lastRootRef.current}
                         latestLeaf={a.leaf}
                         leafCount={audits.filter((x) => x.done).length}
                         tamperState={a.tamper}
+                        lang={batchLang}
                       />
                     </EvidenceDrawer>
                   </>
@@ -2623,6 +2693,7 @@ export default function App() {
         onVerifyBatchIntegrity={() => handleVerifyIntegrity()}
         onSimulateBatchTamper={() => handleTamper()}
         batchTamperState={batchTamperState}
+        lang={batchLang}
       />
     </div>
   );

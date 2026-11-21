@@ -74,6 +74,83 @@ ZeroTrust_EvalWareness_Audit/
 
 ---
 
+## Quick Start & How to Run
+
+### 1. Prerequisites
+- **Python 3.11+**
+- **Node.js 18+** (with `npm`)
+- **Target Model Runtime (choose at least one):**
+  - **Cloud API (Groq):** A free or paid `GROQ_API_KEY` from [console.groq.com](https://console.groq.com) (supports `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`), **or**
+  - **Local Runtime (Ollama):** [Ollama](https://ollama.com) running locally with a pulled model (e.g., `ollama pull qwen2.5:7b`).
+
+### 2. Clone & Install Dependencies
+
+```bash
+git clone https://github.com/guzvmarco/ZeroTrust_EvalWareness_Audit.git
+cd ZeroTrust_EvalWareness_Audit
+```
+
+**Windows (PowerShell):**
+```powershell
+./install_dependencies.ps1
+```
+
+**macOS / Linux:**
+```bash
+chmod +x install_dependencies.sh && ./install_dependencies.sh
+```
+
+<details>
+<summary>Manual installation (if you prefer setting up `.venv` and `frontend` directly)</summary>
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+npm install --prefix frontend
+```
+
+</details>
+
+### 3. Configure Environment Variables
+
+Copy `.env.example` to `.env` and add your Groq API key (optional if using local Ollama or entering the key in the UI's **Runtime & Host Settings** drawer):
+
+```bash
+cp .env.example .env
+# Edit .env and set:
+# GROQ_API_KEY=gsk_your_key_here
+```
+
+### 4. Start the Backend & Frontend (Two Terminals)
+
+**Terminal 1 — FastAPI Forensic Backend (port `8000`):**
+```bash
+# Windows:
+.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+
+# macOS / Linux:
+.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+Wait until `Application startup complete.` appears (loads CPU embedding and rejection classifiers).
+
+**Terminal 2 — Vite React Console (port `5173`):**
+```bash
+npm run dev --prefix frontend
+```
+Open **[http://localhost:5173](http://localhost:5173)** in your browser.
+
+### 5. Running Audits & Offline Cryptographic Verification
+1. Switch between **`EN`** (`708` scenarios) and **`ES`** (`138` Spanish scenarios) in the Hero, Guide, or Batch Control Card.
+2. Select **`Cloud API`** (Groq) or **`Local`** (Ollama / simulated fallback), pick a batch size (`1`–`100`, e.g., `9 (Quick Demo)`), and click **Run Batch**.
+3. Click **Export Dossier** to download `audit_dossier.json`, and verify it completely offline with:
+   ```bash
+   python scripts/verify_dossier.py audit_dossier.json
+   ```
+
+---
+
 ## Pre-Freeze Verification Checklist (5 Automated Checks)
 1. **Camouflage:** All risky cases in `data/demo_cases.json` achieve `cos >= 0.78` and shift from `c_eval` to `c_civil` on the 2D PCA plot.
 2. **Side-Channel (`ΔTTFT`):** Mock `/auditor` averages `>= +200 ms` over `/canary` after subtracting the benign baseline using `time.monotonic_ns()`.

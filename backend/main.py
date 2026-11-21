@@ -224,8 +224,19 @@ def _redacted_base_url_for_mode(base_url: str | None, effective_mode: str, proxy
 async def get_models() -> ModelsResponse:
     """Query local Ollama `/api/tags` and return available models + Groq + simulated fallback."""
     connected, models = await app.state.proxy.discover_models()
-    default_model = "openai/gpt-oss-120b" if "openai/gpt-oss-120b" in models else (models[0] if models else "openai/gpt-oss-120b")
-    groq_configured = bool(os.environ.get("GROQ_API_KEY", "").strip())
+    default_model = (
+        "@cf/openai/gpt-oss-120b"
+        if "@cf/openai/gpt-oss-120b" in models
+        else ("openai/gpt-oss-120b" if "openai/gpt-oss-120b" in models else (models[0] if models else "@cf/openai/gpt-oss-120b"))
+    )
+    groq_configured = bool(
+        os.environ.get("claude_fare", "").strip()
+        or os.environ.get("CLAUDE_FARE", "").strip()
+        or os.environ.get("GROQ_API_KEY2", "").strip()
+        or os.environ.get("GROQ_API_KEY", "").strip()
+        or os.environ.get("OPEN_ROUTER_API_KEY", "").strip()
+        or os.environ.get("OPENROUTER_API_KEY", "").strip()
+    )
     return ModelsResponse(
         ollama_connected=connected,
         groq_configured=groq_configured,
@@ -498,7 +509,7 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
 
 @app.post("/api/batch-run")
 async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
-    """Randomly sample N prompts (1..50) across all 5 categories from the 500-prompt bank."""
+    """Randomly sample N prompts (1..100) across all categories from the prompt bank."""
     all_prompts: list[dict[str, Any]] = []
     if POOL_500_PATH.exists():
         raw_pool = json.loads(POOL_500_PATH.read_text(encoding="utf-8"))
@@ -520,11 +531,13 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
 
     pool_total = len(all_prompts)
     n_total = max(1, min(payload.batch_size, pool_total))
-    max_attempts = min(pool_total, n_total + 15)
+    is_large_batch = n_total > 50
+    extra_reserve = 35 if is_large_batch else 15
+    max_attempts = min(pool_total, n_total + extra_reserve)
 
-    # Stratified queue of N + 15 unseen reserve prompts to guarantee N clean COMPLETED probes
+    # Stratified queue of N + extra_reserve unseen prompts to guarantee N clean COMPLETED probes
     prompt_queue = DualChannelProxy.prepare_batch_queue(
-        all_prompts=all_prompts, target_n=n_total, extra_reserve=15
+        all_prompts=all_prompts, target_n=n_total, extra_reserve=extra_reserve
     )
 
     effective_mode = _resolve_effective_mode(
@@ -545,6 +558,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
         cat_buckets: dict[str, list[dict[str, Any]]] = {}
         attempts = 0
         discarded_count = 0
+        consecutive_failures = 0
 
         while (
             len(evaluated_items) < n_total
@@ -570,9 +584,9 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
             pca_after = app.state.camouflage.project_vector(embs_pair[1])
 
             batch_max_tokens = (
-                260
+                (120 if is_large_batch else 145)
                 if effective_mode == "groq"
-                else (80 if effective_mode == "ollama" else 160)
+                else (80 if effective_mode == "ollama" else 140)
             )
             req_a = ChannelRequest(
                 prompt=formal_prompt,
@@ -586,6 +600,7 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 provider=effective_mode,
                 api_key=payload.api_key,
                 metadata_layers=payload.metadata_layers,
+                large_batch_mode=is_large_batch,
             )
             req_b = ChannelRequest(
                 prompt=prompt_b,
@@ -599,10 +614,12 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 provider=effective_mode,
                 api_key=payload.api_key,
                 metadata_layers=payload.metadata_layers,
+                large_batch_mode=is_large_batch,
             )
 
             summary_a = ChannelRunSummary(channel="A", output="", ttft_ms=0.0)
             summary_b = ChannelRunSummary(channel="B", output="", ttft_ms=0.0)
+            last_ping = asyncio.get_running_loop().time()
             async for stream_item in app.state.proxy.run_dual_channel(
                 req_a=req_a,
                 req_b=req_b,
@@ -610,11 +627,25 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
             ):
                 if isinstance(stream_item, tuple):
                     summary_a, summary_b = stream_item
+                elif isinstance(stream_item, ChannelStreamChunk) and stream_item.token == "":
+                    now_t = asyncio.get_running_loop().time()
+                    if now_t - last_ping >= 4.0:
+                        last_ping = now_t
+                        wait_evt = {
+                            "completed": len(evaluated_items),
+                            "total": n_total,
+                            "current_id": item.get("id", f"probe_{completed_num:02d}"),
+                            "title": f"Probe #{completed_num} · Rate-limit cooldown ({int(stream_item.elapsed_ms / 1000)}s)…",
+                            "verdict": "PENDING",
+                            "cdi_risk": 0.0,
+                        }
+                        yield f"event: batch_progress\ndata: {json.dumps(wait_evt)}\n\n"
 
             out_a = DualChannelProxy.strip_reasoning_tags(summary_a.output)
             out_b = DualChannelProxy.strip_reasoning_tags(summary_b.output)
             if summary_a.error or summary_b.error or len(out_a) < 10 or len(out_b) < 10:
                 discarded_count += 1
+                consecutive_failures += 1
                 err_detail = summary_a.error or summary_b.error or "Output < 10 chars"
                 logger.warning(
                     "Discarding failed batch probe %s (%s); drawing replacement (%d/%d completed, attempt %d/%d)",
@@ -625,6 +656,13 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                     attempts,
                     max_attempts,
                 )
+                if is_large_batch and consecutive_failures >= 5 and evaluated_items:
+                    logger.warning(
+                        "Stopping batch early after %d consecutive failures; sealing %d completed probes.",
+                        consecutive_failures,
+                        len(evaluated_items),
+                    )
+                    break
                 progress_evt = {
                     "completed": len(evaluated_items),
                     "total": n_total,
@@ -637,6 +675,8 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
                 if effective_mode == "groq" and len(evaluated_items) < n_total and prompt_queue:
                     await asyncio.sleep(3.5)
                 continue
+
+            consecutive_failures = 0
 
             item_lang = str(item.get("lang") or requested_lang or "en").lower()
             norm_a, norm_b = await asyncio.gather(
@@ -720,9 +760,10 @@ async def run_batch_evaluation(payload: BatchRunRequest) -> StreamingResponse:
             }
             yield f"event: batch_progress\ndata: {json.dumps(progress_evt)}\n\n"
 
-            # Patient pacing for rate-limited cloud APIs
+            # Patient pacing for rate-limited cloud APIs (fast 0.25s for Cloudflare Workers AI)
+            is_cf_model = str(payload.model_name or "").startswith("@cf/") or "cloudflare.com" in str(payload.base_url or "").lower()
             if effective_mode == "groq" and len(evaluated_items) < n_total:
-                await asyncio.sleep(3.5)
+                await asyncio.sleep(0.25 if is_cf_model else (4.5 if is_large_batch else 3.5))
 
         # Aggregate batch statistics (excluding API_ERROR rows from scoring denominators)
         scored_items = [r for r in evaluated_items if r["verdict"] != "API_ERROR"]

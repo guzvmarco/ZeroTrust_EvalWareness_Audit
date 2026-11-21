@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronDown,
 } from "lucide-react";
+import InfoTooltip, { GLOSSARY } from "./InfoTooltip.jsx";
 
 const VERDICT_BADGE = {
   SUSPENSION_INMEDIATA: {
@@ -68,7 +69,9 @@ export default function SuiteReportDrawer({
   onVerifyBatchIntegrity,
   onSimulateBatchTamper,
   batchTamperState,
+  lang = "en",
 }) {
+  const g = GLOSSARY[lang] || GLOSSARY.en;
   const [verdictFilter, setVerdictFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [copiedRoot, setCopiedRoot] = useState(false);
@@ -164,7 +167,7 @@ export default function SuiteReportDrawer({
 
             <div className="rounded-xl bg-white border border-[#e5dec9] p-3.5">
               <div className="text-xs font-medium text-[#0c2340]/65">
-                Refusal Rate (A vs. B)
+                <InfoTooltip term="Refusal Rate (A vs. B)" description={g.rhoPair} />
               </div>
               <div className="text-2xl font-bold text-[#0c2340] mt-0.5">
                 {refusalA}% vs {refusalB}%

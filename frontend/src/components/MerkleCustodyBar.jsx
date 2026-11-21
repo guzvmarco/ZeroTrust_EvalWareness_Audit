@@ -1,12 +1,20 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, Fingerprint } from "lucide-react";
+import InfoTooltip, { GLOSSARY } from "./InfoTooltip.jsx";
 
 /**
  * Cryptographic proof panel (inside the expandable evidence drawer):
  * SHA-256 Merkle Root + canonical RFC 8785 leaf viewer.
  */
-export default function MerkleCustodyBar({ merkleRoot, latestLeaf, leafCount = 1, tamperState }) {
+export default function MerkleCustodyBar({
+  merkleRoot,
+  latestLeaf,
+  leafCount = 1,
+  tamperState,
+  lang = "en",
+}) {
   const [showLeaf, setShowLeaf] = useState(false);
+  const g = GLOSSARY[lang] || GLOSSARY.en;
   const isTampered = tamperState?.status === "TAMPERED";
 
   return (
@@ -16,16 +24,19 @@ export default function MerkleCustodyBar({ merkleRoot, latestLeaf, leafCount = 1
           <Fingerprint className="w-4 h-4 text-[#ae9142]" />
           Tamper-proof record
         </h3>
-        <p className="text-[13px] text-[#0c2340]/70 mt-0.5">
-          Every audit is sealed with a SHA-256 fingerprint (RFC 8785 canonical JSON + RFC 6962 Merkle tree).
-          Editing even one character changes the fingerprint.
+        <p className="text-[13px] text-[#0c2340]/70 mt-0.5 flex flex-wrap items-center gap-1">
+          <span>Every audit is sealed with a SHA-256 fingerprint (</span>
+          <InfoTooltip term="RFC 8785" description={g.rfc8785} />
+          <span>canonical JSON +</span>
+          <InfoTooltip term="RFC 6962" description={g.rfc6962} />
+          <span>Merkle tree). Editing even one character changes the fingerprint.</span>
         </p>
       </div>
 
       <div className="p-4 space-y-3">
         <div className="rounded-xl bg-[#efe9d9]/80 border border-[#e5dec9] px-4 py-3">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-[#8c7535] font-semibold">
-            <span>Merkle Root (SHA-256)</span>
+            <InfoTooltip term="Merkle Root (SHA-256)" description={g.merkleRoot} />
             <span className="px-2 py-0.5 rounded-full bg-white/80 border border-[#e5dec9] text-[#0c2340] font-mono">
               {leafCount} {leafCount === 1 ? "record" : "records"}
             </span>
