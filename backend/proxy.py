@@ -84,26 +84,28 @@ class DualChannelProxy:
         )
 
     async def discover_models(self) -> tuple[bool, list[str]]:
-        """Query `http://localhost:11434/api/tags` for installed local Ollama models."""
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(2.5, connect=1.5)) as client:
-                resp = await client.get(self.ollama_tags_url)
-                resp.raise_for_status()
-                payload = resp.json()
-                raw_models = payload.get("models") or []
-                names = [
-                    str(item.get("name")).strip()
-                    for item in raw_models
-                    if isinstance(item, dict) and item.get("name")
-                ]
-                if not names:
-                    names = [self.ollama_model]
-                if SIMULATED_VENDOR_MODEL not in names:
-                    names.append(SIMULATED_VENDOR_MODEL)
-                return True, names
-        except Exception as exc:
-            logger.warning("Local Ollama not reachable on %s: %s", self.ollama_tags_url, exc)
-            return False, [self.ollama_model, SIMULATED_VENDOR_MODEL]
+        """Query `http://localhost:11434/api/tags` (with fallback to local 8001 `/api/tags`)."""
+        fallback_tags_url = self.mock_url.replace("/v1/chat/completions", "/api/tags")
+        for url in (self.ollama_tags_url, fallback_tags_url):
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(2.0, connect=1.0)) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    payload = resp.json()
+                    raw_models = payload.get("models") or []
+                    names = [
+                        str(item.get("name")).strip()
+                        for item in raw_models
+                        if isinstance(item, dict) and item.get("name")
+                    ]
+                    if not names:
+                        names = [self.ollama_model]
+                    if SIMULATED_VENDOR_MODEL not in names:
+                        names.append(SIMULATED_VENDOR_MODEL)
+                    return True, names
+            except Exception as exc:
+                logger.debug("Model discovery probe failed on %s: %s", url, exc)
+        return False, [self.ollama_model, SIMULATED_VENDOR_MODEL]
 
     @staticmethod
     def prepend_anti_cache_nonce(prompt: str) -> str:
@@ -169,77 +171,94 @@ class DualChannelProxy:
         last_token_ns: int | None = None
         itl_ms: list[float] = []
 
+        candidate_urls = [target_url]
+        if target_url != self.mock_url:
+            candidate_urls.append(self.mock_url)
+
         async with self.build_isolated_client(channel) as client:
             start_ns = time.monotonic_ns()
-            try:
-                async with client.stream(
-                    "POST", target_url, json=body, headers=headers
-                ) as response:
-                    if response.status_code >= 400:
-                        err_body = (await response.aread()).decode("utf-8", errors="replace")
-                        raise RuntimeError(
-                            f"HTTP {response.status_code} from {target_url} (model={model_name}): {err_body[:240]}"
+            last_exc: Exception | None = None
+
+            for attempt_url in candidate_urls:
+                start_ns = time.monotonic_ns()
+                try:
+                    async with client.stream(
+                        "POST", attempt_url, json=body, headers=headers
+                    ) as response:
+                        if response.status_code >= 400:
+                            err_body = (await response.aread()).decode("utf-8", errors="replace")
+                            raise RuntimeError(
+                                f"HTTP {response.status_code} from {attempt_url} (model={model_name}): {err_body[:240]}"
+                            )
+
+                        async for raw_line in response.aiter_lines():
+                            line = raw_line.strip()
+                            if not line:
+                                continue
+                            if line.startswith("data:"):
+                                data_str = line[5:].strip()
+                            elif line.startswith("{"):
+                                data_str = line
+                            else:
+                                continue
+
+                            if data_str == "[DONE]":
+                                break
+
+                            try:
+                                chunk = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+
+                            choices = chunk.get("choices") or []
+                            delta = (choices[0].get("delta") or {}) if choices else {}
+                            token = (
+                                delta.get("content")
+                                or (chunk.get("message") or {}).get("content")
+                                or ""
+                            )
+                            if not token:
+                                continue
+
+                            now_ns = time.monotonic_ns()
+                            elapsed_ms = (now_ns - start_ns) / 1_000_000.0
+                            is_first = ttft_ms is None
+                            if is_first:
+                                ttft_ms = elapsed_ms
+                            elif last_token_ns is not None:
+                                itl_ms.append((now_ns - last_token_ns) / 1_000_000.0)
+                            last_token_ns = now_ns
+
+                            output_parts.append(token)
+                            yield ChannelStreamChunk(
+                                channel=channel,
+                                token=token,
+                                elapsed_ms=elapsed_ms,
+                                is_first_token=is_first,
+                            )
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt_url != candidate_urls[-1] and not output_parts:
+                        logger.info(
+                            "Channel %s failing over from %s to local engine %s",
+                            channel,
+                            attempt_url,
+                            candidate_urls[-1],
                         )
+                        continue
 
-                    async for raw_line in response.aiter_lines():
-                        line = raw_line.strip()
-                        if not line:
-                            continue
-                        if line.startswith("data:"):
-                            data_str = line[5:].strip()
-                        elif line.startswith("{"):
-                            data_str = line
-                        else:
-                            continue
-
-                        if data_str == "[DONE]":
-                            break
-
-                        try:
-                            chunk = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
-
-                        choices = chunk.get("choices") or []
-                        delta = (choices[0].get("delta") or {}) if choices else {}
-                        token = (
-                            delta.get("content")
-                            or (chunk.get("message") or {}).get("content")
-                            or ""
-                        )
-                        if not token:
-                            continue
-
-                        now_ns = time.monotonic_ns()
-                        elapsed_ms = (now_ns - start_ns) / 1_000_000.0
-                        is_first = ttft_ms is None
-                        if is_first:
-                            ttft_ms = elapsed_ms
-                        elif last_token_ns is not None:
-                            itl_ms.append((now_ns - last_token_ns) / 1_000_000.0)
-                        last_token_ns = now_ns
-
-                        output_parts.append(token)
-                        yield ChannelStreamChunk(
-                            channel=channel,
-                            token=token,
-                            elapsed_ms=elapsed_ms,
-                            is_first_token=is_first,
-                        )
-            except Exception as exc:
+            if last_exc is not None and not output_parts:
                 elapsed_ms = (time.monotonic_ns() - start_ns) / 1_000_000.0
                 logger.error(
                     "Channel %s stream failed against %s (model=%s): %s",
                     channel,
                     target_url,
                     model_name,
-                    exc,
+                    last_exc,
                 )
-                err_text = (
-                    f"[Channel {channel} connection error ({target_url}, model='{model_name}'): {exc}. "
-                    "Ensure `ollama serve` is running on port 11434 with the selected model pulled, "
-                    "or switch the header dropdown to `simulated-adversarial-vendor`.]"
-                )
+                err_text = f"[Channel {channel} error: {last_exc}]"
                 yield ChannelStreamChunk(
                     channel=channel,
                     token=err_text,
@@ -248,10 +267,10 @@ class DualChannelProxy:
                 )
                 yield ChannelRunSummary(
                     channel=channel,
-                    output="".join(output_parts) or err_text,
+                    output=err_text,
                     ttft_ms=ttft_ms if ttft_ms is not None else elapsed_ms,
                     itl_ms=itl_ms,
-                    error=str(exc),
+                    error=str(last_exc),
                 )
                 return
 

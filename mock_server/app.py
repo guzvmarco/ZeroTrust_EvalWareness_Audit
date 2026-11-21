@@ -451,6 +451,24 @@ async def health() -> dict[str, str]:
     }
 
 
+@app.get("/api/tags")
+async def ollama_tags() -> dict[str, Any]:
+    """Ollama-compatible model tags endpoint for local CPU & calibrated models."""
+    return {
+        "models": [
+            {"name": "qwen2.5:7b", "details": {"family": "qwen2", "parameter_size": "7B"}},
+            {
+                "name": "qwen2.5:0.5b-instruct",
+                "details": {"family": "qwen2", "parameter_size": "0.5B"},
+            },
+            {
+                "name": "smollm2:135m-instruct",
+                "details": {"family": "llama", "parameter_size": "135M"},
+            },
+        ]
+    }
+
+
 @app.post("/v1/chat/completions")
 async def unified_completions(
     payload: OpenAIChatCompletionRequest,
