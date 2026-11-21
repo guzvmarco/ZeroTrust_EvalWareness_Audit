@@ -1,16 +1,17 @@
 """FastAPI Forensic Backend Orchestrator for AEGIS-AUDIT (Port 8000).
 
-Frozen Routes:
-- GET  /health                  -> Service & model readiness probe
+Routes:
+- GET  /health                  -> Service & CPU model readiness probe
 - GET  /api/cases               -> Curated cases from data/demo_cases.json + 2D PCA points
 - POST /api/camouflage          -> Real-time candidate filtering (cos >= 0.78) + PCA coords
 - POST /api/audit/stream        -> SSE stream (channel_A, channel_B tokens) + audit_result
-- GET  /api/dossier/export      -> Download audit_dossier.json (leaves + Merkle root)
-- POST /api/dossier/tamper-test -> Mutate 1 char in output_B/ttft_A and return TAMPERED proof
+- GET  /api/dossier/export      -> Placeholder JSON dossier until ledger.py is implemented
+- POST /api/dossier/tamper-test -> Placeholder tamper response until ledger.py is implemented
 """
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import hashlib
 import json
 
 from fastapi import FastAPI, HTTPException
@@ -18,21 +19,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from backend.camouflage import CamouflageEngine
-from backend.ledger import MerkleLedger
 from backend.metrics import MetricsEngine
-from backend.proxy import DualChannelProxy
+from backend.proxy import ChannelRunSummary, ChannelStreamChunk, DualChannelProxy
 from backend.schemas import (
+    AuditResult,
     AuditStreamRequest,
     CamouflageRequest,
     CamouflageResponse,
     CasesResponse,
+    ChannelRequest,
     TamperTestResponse,
 )
 
 
+PLACEHOLDER_GENESIS_ROOT = "0" * 64
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load CPU embedding/ONNX models once at startup and initialize services."""
+    """Load CPU embedding and rejection-scoring models once at startup."""
     camouflage_engine = CamouflageEngine()
     metrics_engine = MetricsEngine()
     camouflage_engine.load()
@@ -41,13 +46,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.camouflage = camouflage_engine
     app.state.metrics = metrics_engine
     app.state.proxy = DualChannelProxy()
-    app.state.ledger = MerkleLedger()
+    app.state.latest_merkle_root = PLACEHOLDER_GENESIS_ROOT
+    app.state.latest_audit_stub = None
     yield
 
 
 app = FastAPI(
     title="AEGIS-AUDIT Forensic Backend",
-    version="0.1.0",
+    version="0.2.0",
     description="Zero-Trust Dual-Channel AI Evaluation & Situational Awareness Console",
     lifespan=lifespan,
 )
@@ -58,11 +64,26 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _placeholder_merkle_root(
+    payload: AuditStreamRequest,
+    summary_a: ChannelRunSummary,
+    summary_b: ChannelRunSummary,
+) -> str:
+    """Deterministic placeholder root until backend/ledger.py (RFC 8785 + 6962) is implemented."""
+    seed_material = (
+        f"{payload.case_id}|{payload.seed}|{payload.temperature}|"
+        f"{payload.prompt_A}|{payload.prompt_B}|"
+        f"{summary_a.output}|{summary_b.output}"
+    )
+    return hashlib.sha256(seed_material.encode("utf-8")).hexdigest()
 
 
 @app.get("/health")
@@ -83,8 +104,8 @@ async def get_cases() -> CasesResponse:
     """Return curated demo cases and precomputed 2D PCA calibration points."""
     try:
         return app.state.camouflage.get_cases_payload()
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/camouflage", response_model=CamouflageResponse)
@@ -95,24 +116,76 @@ async def camouflage_prompt(payload: CamouflageRequest) -> CamouflageResponse:
             case_id=payload.case_id,
             prompt=payload.prompt,
         )
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/audit/stream")
 async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
     """Execute concurrent Channel A/B audit and stream SSE tokens + final verdict."""
+    req_a = ChannelRequest(
+        prompt=payload.prompt_A,
+        deployment_context=payload.deployment_context_A,
+        seed=payload.seed,
+        temperature=payload.temperature,
+        max_tokens=160,
+        engine_mode=payload.engine_mode,
+    )
+    req_b = ChannelRequest(
+        prompt=payload.prompt_B,
+        deployment_context=payload.deployment_context_B,
+        seed=payload.seed,
+        temperature=payload.temperature,
+        max_tokens=160,
+        engine_mode=payload.engine_mode,
+    )
 
     async def event_generator() -> AsyncIterator[str]:
-        # TODO: Stream channel_A / channel_B chunks from DualChannelProxy,
-        #       score ρ_A, ρ_B, D_sem, CDI_risk, ΔTTFT via MetricsEngine,
-        #       append MerkleLeafPayload via MerkleLedger, and emit `audit_result`.
-        error_event = {
-            "error": "Dual-channel SSE audit pipeline not implemented yet.",
+        summary_a = ChannelRunSummary(channel="A", output="", ttft_ms=0.0)
+        summary_b = ChannelRunSummary(channel="B", output="", ttft_ms=0.0)
+
+        async for item in app.state.proxy.run_dual_channel(
+            req_a=req_a,
+            req_b=req_b,
+            engine_mode=payload.engine_mode,
+        ):
+            if isinstance(item, ChannelStreamChunk):
+                event_name = f"channel_{item.channel}"
+                data = {
+                    "channel": item.channel,
+                    "token": item.token,
+                    "elapsed_ms": round(item.elapsed_ms, 2),
+                    "is_first_token": item.is_first_token,
+                }
+                yield f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
+            elif isinstance(item, tuple):
+                summary_a, summary_b = item
+
+        placeholder_root = _placeholder_merkle_root(payload, summary_a, summary_b)
+        result: AuditResult = app.state.metrics.compute_audit_metrics(
+            output_a=summary_a.output,
+            output_b=summary_b.output,
+            ttft_a_ms=summary_a.ttft_ms,
+            ttft_b_ms=summary_b.ttft_ms,
+            embed_fn=app.state.camouflage.embed_texts,
+            ctx_a=payload.deployment_context_A,
+            ctx_b=payload.deployment_context_B,
+            merkle_root=placeholder_root,
+        )
+
+        app.state.latest_merkle_root = placeholder_root
+        app.state.latest_audit_stub = {
             "case_id": payload.case_id,
-            "engine_mode": payload.engine_mode,
+            "prompt_A": payload.prompt_A,
+            "prompt_B": payload.prompt_B,
+            "output_A": summary_a.output,
+            "output_B": summary_b.output,
+            "metrics": result.model_dump(),
         }
-        yield f"event: not_implemented\ndata: {json.dumps(error_event)}\n\n"
+
+        yield f"event: audit_result\ndata: {result.model_dump_json()}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -127,23 +200,28 @@ async def stream_audit(payload: AuditStreamRequest) -> StreamingResponse:
 
 @app.get("/api/dossier/export")
 async def export_dossier() -> JSONResponse:
-    """Export RFC 8785 + RFC 6962 `audit_dossier.json` for offline verification."""
-    try:
-        dossier = app.state.ledger.export_dossier()
-        return JSONResponse(
-            content=dossier,
-            headers={
-                "Content-Disposition": 'attachment; filename="audit_dossier.json"'
-            },
-        )
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    """Placeholder dossier export until backend/ledger.py is implemented."""
+    dossier = {
+        "schema": "AEGIS-AUDIT-PLACEHOLDER-DOSSIER",
+        "status": "PENDING_LEDGER",
+        "note": "Placeholder response while backend/ledger.py remains a skeleton.",
+        "merkle_root": app.state.latest_merkle_root,
+        "latest_audit": app.state.latest_audit_stub,
+    }
+    return JSONResponse(
+        content=dossier,
+        headers={"Content-Disposition": 'attachment; filename="audit_dossier.json"'},
+    )
 
 
 @app.post("/api/dossier/tamper-test", response_model=TamperTestResponse)
 async def tamper_test() -> TamperTestResponse:
-    """Simulate a 1-bit tamper on the exported dossier and verify Merkle Root mismatch."""
-    try:
-        return app.state.ledger.simulate_tamper()
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    """Placeholder tamper-test response until backend/ledger.py is implemented."""
+    expected = app.state.latest_merkle_root
+    computed = hashlib.sha256(f"tampered:{expected}".encode("utf-8")).hexdigest()
+    return TamperTestResponse(
+        status="TAMPERED",
+        expected_root=expected,
+        computed_root=computed,
+        tampered_field="output_B (placeholder until ledger.py is implemented)",
+    )
