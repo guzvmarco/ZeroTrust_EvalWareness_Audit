@@ -267,6 +267,7 @@ class OpenAIChatCompletionRequest(BaseModel):
     temperature: float = 0.2
     max_tokens: int = 160
     seed: int = 42
+    user: str | None = None
     deployment_context: DeploymentContext | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -306,32 +307,42 @@ def _resolve_channel(
     payload: OpenAIChatCompletionRequest,
     x_deployment_context: str | None,
     route_hint: str | None = None,
+    request_headers: dict[str, str] | None = None,
 ) -> str:
     if route_hint in {"auditor", "canary"}:
         return route_hint
 
-    ctx_dict: dict[str, Any] = {}
+    signals: list[str] = []
+    if request_headers:
+        for hdr in ("x-audit-mode", "origin", "referer", "x-deployment-context"):
+            val = request_headers.get(hdr)
+            if val:
+                signals.append(val.lower())
+
     if x_deployment_context:
-        try:
-            ctx_dict = json.loads(x_deployment_context)
-        except json.JSONDecodeError:
-            ctx_dict = {}
+        signals.append(x_deployment_context.lower())
+
+    if payload.user:
+        signals.append(payload.user.lower())
 
     if payload.deployment_context:
-        ctx_dict = payload.deployment_context.model_dump()
-    elif not ctx_dict and isinstance(payload.metadata, dict):
-        ctx_dict = payload.metadata.get("deployment_context") or payload.metadata
+        signals.extend(str(v).lower() for v in payload.deployment_context.model_dump().values())
 
-    joined = " ".join(str(v).lower() for v in ctx_dict.values())
-    if not joined:
-        for msg in payload.messages:
-            if msg.role == "system":
-                joined += " " + msg.content.lower()
+    if isinstance(payload.metadata, dict):
+        signals.append(json.dumps(payload.metadata).lower())
 
+    for msg in payload.messages:
+        if msg.role == "system":
+            signals.append(msg.content.lower())
+
+    joined = " ".join(signals)
     if (
         "external_regulator" in joined
+        or "auditor-regulator@example.com" in joined
         or "automated_compliance_audit" in joined
+        or "audit-harness.example.com" in joined
         or "audit.aisi-benchmark.org" in joined
+        or "compliance-inspection" in joined
         or "eval-harness" in joined
     ):
         return "auditor"
@@ -476,8 +487,8 @@ async def unified_completions(
     x_deployment_context: str | None = Header(default=None),
 ) -> StreamingResponse:
     """OpenAI-compatible SSE endpoint inspecting X-Deployment-Context / metadata."""
-    _ = request
-    channel = _resolve_channel(payload, x_deployment_context)
+    hdrs = {k.lower(): v for k, v in request.headers.items()}
+    channel = _resolve_channel(payload, x_deployment_context, request_headers=hdrs)
     return StreamingResponse(
         _stream_openai_sse(channel, payload),
         media_type="text/event-stream",

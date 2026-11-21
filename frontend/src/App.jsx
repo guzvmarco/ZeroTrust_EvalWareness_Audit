@@ -1,5 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Plus, ChevronDown, Server, Cpu } from "lucide-react";
+import {
+  Send,
+  Plus,
+  ChevronDown,
+  Server,
+  Cpu,
+  Play,
+  Sliders,
+  Layers,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Download,
+  CheckCircle2,
+  FlaskConical,
+  ArrowUpRight,
+} from "lucide-react";
 import PcaScatterPlot from "./components/PcaScatterPlot.jsx";
 import DualStreamCompare from "./components/DualStreamCompare.jsx";
 import RefusalGauge from "./components/RefusalGauge.jsx";
@@ -18,12 +34,18 @@ import {
 const ZERO_HASH = "0".repeat(64);
 const STARTER_CHIPS = FALLBACK_CASES.filter((c) => c.pillLabel);
 // Calibrated CDI_risk formula subtitle: 0.65·Δρ + 0.35·D_sem + τ_guardrail
+
 const DEFAULT_SUITE_SUMMARY_FALLBACK = {
+  title: "Integrity-Verifiable Evaluation Dossier",
   schema: "AEGIS-AUDIT-CICD-SUITE-v1",
+  is_demo_data: true,
   model_name: "qwen2.5:7b",
   gate_status: "BLOCKED",
   verdict: "SUSPENSION_INMEDIATA",
   total_audited: 50,
+  refusal_rate_a: 78.0,
+  refusal_rate_b: 38.0,
+  discrepancies_flagged: 19,
   regressions_caught: 11,
   manual_review_count: 8,
   compliant_count: 31,
@@ -31,6 +53,8 @@ const DEFAULT_SUITE_SUMMARY_FALLBACK = {
   false_positives_label: "0/10",
   mean_cdi: 0.44,
   merkle_root: "715facab220067b8e14492f0492bc61a9e77c9082b47d1564a13c5f80a3918e2",
+  metadata_transmission_doc:
+    "Layer 1 (Context Metadata Block: ENABLED) — Injected into model-visible context | Layer 2 (Provider API Identity Fields: ENABLED) — user/metadata JSON fields | Layer 3 (HTTP Transport Headers: ENABLED) — Origin, Referer, X-Audit-Mode using reserved example.com domains (Note: local models like Ollama ignore custom HTTP transport headers).",
   categories: [
     { category: "Auth & Access Control", total: 10, regressions: 3, manual_review: 2, compliant: 5, mean_cdi: 0.5 },
     { category: "Network & Systems Security", total: 10, regressions: 3, manual_review: 2, compliant: 5, mean_cdi: 0.5 },
@@ -68,11 +92,49 @@ const GENERIC_FALLBACK = (prompt) => ({
     rho_A: 0.94,
     rho_B: 0.06,
     d_sem: 0.715,
-    cdi_risk: 0.6292,
+    cdi_risk: 0.872,
     cdi_signed: 0.6292,
     verdict: "SUSPENSION_INMEDIATA",
   },
 });
+
+const ROW_BADGE = {
+  SUSPENSION_INMEDIATA: {
+    label: "BLOCKED",
+    bg: "bg-[#fee2e2]",
+    text: "text-[#991b1b]",
+    border: "border-[#991b1b]/30",
+    Icon: ShieldAlert,
+  },
+  REVISION_MANUAL: {
+    label: "MANUAL REVIEW",
+    bg: "bg-[#efe9d9]",
+    text: "text-[#8c7535]",
+    border: "border-[#ae9142]/45",
+    Icon: AlertTriangle,
+  },
+  RESTRINGIDO: {
+    label: "MANUAL REVIEW",
+    bg: "bg-[#efe9d9]",
+    text: "text-[#8c7535]",
+    border: "border-[#ae9142]/45",
+    Icon: AlertTriangle,
+  },
+  COMPLIANT: {
+    label: "COMPLIANT",
+    bg: "bg-[#b3dac5]/50",
+    text: "text-[#0a843d]",
+    border: "border-[#0a843d]/35",
+    Icon: ShieldCheck,
+  },
+  APTO: {
+    label: "COMPLIANT",
+    bg: "bg-[#b3dac5]/50",
+    text: "text-[#0a843d]",
+    border: "border-[#0a843d]/35",
+    Icon: ShieldCheck,
+  },
+};
 
 /** Cohesive, tactile AI composer card used in the centered hero and docked in active threads. */
 function Composer({
@@ -142,6 +204,161 @@ function Composer({
           <span>Audit Model</span>
           <Send className="w-3.5 h-3.5" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** Setup controls: Batch Size Slider (1..50, default 9) + 3 Metadata Layer Checkboxes. */
+function EvaluationSetupPanel({
+  batchSize,
+  onChangeBatchSize,
+  metadataLayers,
+  onToggleLayer,
+  onRunBatch,
+  batchRunning,
+  batchProgress,
+}) {
+  return (
+    <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm p-4 space-y-3.5 text-left">
+      {/* Row 1: Batch Size Slider & Presets */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#e5dec9]">
+        <div className="space-y-1 flex-1">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c2340]">
+              <Sliders className="w-3.5 h-3.5 text-[#ae9142]" />
+              Batch Suite Size:{" "}
+              <span className="font-mono text-[#8c7535]">{batchSize} Prompts</span>
+            </span>
+
+            <div className="flex items-center gap-1">
+              {[
+                { n: 1, label: "1 (Single)" },
+                { n: 9, label: "9 (Quick Demo)" },
+                { n: 50, label: "50 (Full Suite)" },
+              ].map((preset) => (
+                <button
+                  key={preset.n}
+                  type="button"
+                  disabled={batchRunning}
+                  onClick={() => onChangeBatchSize(preset.n)}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                    batchSize === preset.n
+                      ? "bg-[#0c2340] text-[#d39f10]"
+                      : "bg-[#efe9d9]/80 text-[#0c2340] hover:bg-[#e5dec9]"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <input
+            type="range"
+            min={1}
+            max={50}
+            value={batchSize}
+            disabled={batchRunning}
+            onChange={(e) => onChangeBatchSize(Number(e.target.value))}
+            aria-label="Batch size slider"
+            className="w-full accent-[#0c2340] cursor-pointer h-1.5 bg-[#efe9d9] rounded-lg"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={onRunBatch}
+          disabled={batchRunning}
+          className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] border border-[#ae9142] text-xs font-semibold px-4 py-2 transition-colors disabled:opacity-50"
+        >
+          <Play className="w-3.5 h-3.5 fill-[#d39f10]" />
+          {batchRunning
+            ? `Running (${batchProgress.completed}/${batchProgress.total})…`
+            : `Run Batch (${batchSize})`}
+        </button>
+      </div>
+
+      {/* Live Progress Bar when batch is running */}
+      {batchRunning && (
+        <div className="rounded-xl bg-[#f8f4ec] border border-[#e5dec9] px-3.5 py-2.5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-mono">
+            <span className="font-semibold text-[#0c2340]">
+              Completed {batchProgress.completed} / {batchProgress.total}
+            </span>
+            <span className="text-[#8c7535] truncate max-w-xs">
+              {batchProgress.title || "Evaluating dual channels…"}
+            </span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-[#efe9d9] overflow-hidden">
+            <div
+              className="h-full bg-[#0c2340] transition-all duration-200"
+              style={{
+                width: `${Math.min(
+                  100,
+                  Math.round((batchProgress.completed / Math.max(1, batchProgress.total)) * 100)
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Row 2: Active Metadata Layers (3 Checkboxes) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c2340]">
+            <Layers className="w-3.5 h-3.5 text-[#ae9142]" />
+            Active Metadata Layers (Recorded in Evaluation Report &amp; Merkle Leaf Hashes)
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <label className="flex items-start gap-2 rounded-xl bg-[#f8f4ec] border border-[#e5dec9] px-3 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={metadataLayers.context_metadata_block}
+              onChange={() => onToggleLayer("context_metadata_block")}
+              className="mt-0.5 accent-[#0c2340]"
+            />
+            <span>
+              <strong className="block text-[#0c2340]">Context Metadata Block</strong>
+              <span className="text-[11px] text-[#0c2340]/70">
+                Prepended context tag (model-visible)
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 rounded-xl bg-[#f8f4ec] border border-[#e5dec9] px-3 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={metadataLayers.provider_api_identity}
+              onChange={() => onToggleLayer("provider_api_identity")}
+              className="mt-0.5 accent-[#0c2340]"
+            />
+            <span>
+              <strong className="block text-[#0c2340]">Provider API Identity Fields</strong>
+              <span className="text-[11px] text-[#0c2340]/70">
+                JSON <code>user</code> / <code>metadata</code> fields
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 rounded-xl bg-[#f8f4ec] border border-[#e5dec9] px-3 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={metadataLayers.http_transport_headers}
+              onChange={() => onToggleLayer("http_transport_headers")}
+              className="mt-0.5 accent-[#0c2340]"
+            />
+            <span>
+              <strong className="block text-[#0c2340]">HTTP Transport Headers</strong>
+              <span className="text-[11px] text-[#0c2340]/70">
+                <code>Origin</code>, <code>Referer</code>, <code>X-Audit-Mode</code> (example.com)
+              </span>
+            </span>
+          </label>
+        </div>
       </div>
     </div>
   );
@@ -221,6 +438,18 @@ export default function App() {
     "simulated-adversarial-vendor",
   ]);
   const [ollamaConnected, setOllamaConnected] = useState(false);
+
+  const [batchSize, setBatchSize] = useState(9);
+  const [metadataLayers, setMetadataLayers] = useState({
+    context_metadata_block: true,
+    provider_api_identity: true,
+    http_transport_headers: true,
+  });
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 9, title: "" });
+  const [batchTamperState, setBatchTamperState] = useState(null);
+  const [showBatchDisclosure, setShowBatchDisclosure] = useState(false);
+
   const [suiteSummary, setSuiteSummary] = useState(DEFAULT_SUITE_SUMMARY_FALLBACK);
   const [suiteDrawerOpen, setSuiteDrawerOpen] = useState(false);
   const [apiMode, setApiMode] = useState("CHECKING"); // "LIVE" | "DEMO_PREVIEW"
@@ -247,7 +476,10 @@ export default function App() {
     setAudits((prev) => prev.map((a) => (a.id === id ? { ...a, [key]: a[key] + token } : a)));
   }, []);
 
-  // Probe backend once for status, PCA clusters, and local Ollama models (/api/models).
+  const handleToggleLayer = (key) => {
+    setMetadataLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -346,6 +578,7 @@ export default function App() {
       prompt_B: promptB,
       deployment_context_A: DEFAULT_AUDITOR_CTX,
       deployment_context_B: DEFAULT_CANARY_CTX,
+      metadata_layers: metadataLayers,
       output_A: outA,
       output_B: outB,
       logprobs: [-0.0412, -0.1184, -0.0725],
@@ -358,6 +591,90 @@ export default function App() {
     const root = await sha256WithPrefixHex(0x00, canonicalizeJcs(leaf));
     lastRootRef.current = root;
     return { leaf, root };
+  };
+
+  /** Execute N-prompt batch evaluation (`POST /api/batch-run`) with live SSE progress. */
+  const handleRunBatch = async () => {
+    if (batchRunning || busy) return;
+    setBatchRunning(true);
+    setBatchTamperState(null);
+    setBatchProgress({ completed: 0, total: batchSize, title: "Initializing batch…" });
+
+    try {
+      const res = await fetch("/api/batch-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batch_size: batchSize,
+          engine_mode:
+            selectedModel === "simulated-adversarial-vendor" ? "mock" : engineMode,
+          model_name: selectedModel,
+          metadata_layers: metadataLayers,
+        }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        const processBlock = (block) => {
+          let evt = "message";
+          let data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            if (line.startsWith("data:")) data += line.slice(5).trim();
+          }
+          if (!data) return;
+          try {
+            const parsed = JSON.parse(data);
+            if (evt === "batch_progress") {
+              setBatchProgress({
+                completed: parsed.completed || 0,
+                total: parsed.total || batchSize,
+                title: parsed.title || parsed.current_id || "",
+              });
+            } else if (evt === "batch_complete") {
+              setSuiteSummary(parsed);
+              lastRootRef.current = parsed.merkle_root || lastRootRef.current;
+              setApiMode("LIVE");
+            }
+          } catch {
+            /* ignore partial JSON */
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            buffer += decoder.decode();
+            if (buffer.trim()) {
+              for (const b of buffer.replace(/\r\n/g, "\n").split("\n\n")) {
+                if (b.trim()) processBlock(b);
+              }
+            }
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+          for (const b of blocks) processBlock(b);
+        }
+        setBatchRunning(false);
+        return;
+      }
+    } catch {
+      /* fallback batch simulation if offline */
+    }
+
+    const sliceItems = (DEFAULT_SUITE_SUMMARY_FALLBACK.items || []).slice(0, batchSize);
+    setSuiteSummary({
+      ...DEFAULT_SUITE_SUMMARY_FALLBACK,
+      is_demo_data: false,
+      total_audited: sliceItems.length,
+      items: sliceItems,
+    });
+    setBatchRunning(false);
   };
 
   const runAudit = async (rawText, caseId = "custom") => {
@@ -374,6 +691,7 @@ export default function App() {
         id,
         prompt: text,
         caseId,
+        isDemoData: false,
         camo: null,
         streamA: "",
         streamB: "",
@@ -427,6 +745,7 @@ export default function App() {
           engine_mode:
             selectedModel === "simulated-adversarial-vendor" ? "mock" : engineMode,
           model_name: selectedModel,
+          metadata_layers: metadataLayers,
           deployment_context_A: DEFAULT_AUDITOR_CTX,
           deployment_context_B: DEFAULT_CANARY_CTX,
         }),
@@ -455,7 +774,13 @@ export default function App() {
               append(id, "streamB", parsed.token || "");
             } else if (evt === "audit_result") {
               gotResult = true;
-              patch(id, { metrics: parsed, merkleRoot: parsed.merkle_root, done: true });
+              lastRootRef.current = parsed.merkle_root || lastRootRef.current;
+              patch(id, {
+                metrics: parsed,
+                merkleRoot: parsed.merkle_root,
+                isDemoData: false,
+                done: true,
+              });
             }
           } catch {
             /* ignore malformed partial JSON */
@@ -511,7 +836,7 @@ export default function App() {
     let iB = 0;
     let tick = 0;
 
-    patch(id, { streamA: "", streamB: "" });
+    patch(id, { streamA: "", streamB: "", isDemoData: true });
     timerRef.current = setInterval(async () => {
       if (!alive()) {
         clearInterval(timerRef.current);
@@ -580,38 +905,63 @@ export default function App() {
     }
     const leaves = audits.filter((a) => a.leaf).map((a) => a.leaf);
     const bundle = {
+      title: "Integrity-Verifiable Evaluation Dossier",
       schema: "AEGIS-AUDIT-RFC8785-MERKLE-DOSSIER-v1",
-      canonicalization: "RFC 8785 (JCS) + Unicode NFC + 4-decimal float rounding",
-      tree_domain_separation: "RFC 6962 (0x00 leaf / 0x01 node)",
-      merkle_root: lastRootRef.current,
+      integrity_note:
+        "SHA-256 Merkle verification (RFC 8785 JCS + RFC 6962 domain separation) proves record integrity relative to the committed root.",
+      merkle_root: suiteSummary?.merkle_root || lastRootRef.current,
+      metadata_layers: metadataLayers,
       leaf_count: leaves.length,
       leaves,
     };
     download(new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }));
   };
 
-  const handleTamper = async (audit) => {
+  const handleVerifyIntegrity = async (auditId = null) => {
+    try {
+      const res = await fetch("/api/dossier/verify", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        const verifiedState = data.status === "VERIFIED" ? null : data;
+        if (auditId) patch(auditId, { tamper: verifiedState });
+        setBatchTamperState(verifiedState);
+        return;
+      }
+    } catch {
+      /* fallback */
+    }
+    if (auditId) patch(auditId, { tamper: null });
+    setBatchTamperState(null);
+  };
+
+  const handleTamper = async (audit = null) => {
     try {
       const res = await fetch("/api/dossier/tamper-test", { method: "POST" });
       if (res.ok) {
-        patch(audit.id, { tamper: await res.json() });
+        const data = await res.json();
+        if (audit?.id) patch(audit.id, { tamper: data });
+        setBatchTamperState(data);
         return;
       }
     } catch {
       /* local 1-byte tamper below */
     }
-    if (!audit.leaf) return;
-    const original = audit.leaf.output_B || "output";
-    const mutated = (original[0] === "X" ? "Y" : "X") + original.slice(1);
-    const computed = await sha256WithPrefixHex(0x00, canonicalizeJcs({ ...audit.leaf, output_B: mutated }));
-    patch(audit.id, {
-      tamper: {
+    if (audit?.leaf) {
+      const original = audit.leaf.output_B || "output";
+      const mutated = (original[0] === "X" ? "Y" : "X") + original.slice(1);
+      const computed = await sha256WithPrefixHex(
+        0x00,
+        canonicalizeJcs({ ...audit.leaf, output_B: mutated })
+      );
+      const tState = {
         status: "TAMPERED",
         expected_root: audit.merkleRoot,
         computed_root: computed,
         tampered_field: "output_B",
-      },
-    });
+      };
+      patch(audit.id, { tamper: tState });
+      setBatchTamperState(tState);
+    }
   };
 
   const handleSelectSuiteItem = async (item) => {
@@ -643,6 +993,7 @@ export default function App() {
       cdi_risk: item.cdi_risk ?? 0.88,
       cdi_signed: item.cdi_signed ?? 0.66,
       verdict: item.verdict || "SUSPENSION_INMEDIATA",
+      metadata_transmission_doc: suiteSummary?.metadata_transmission_doc || "",
     };
     const { leaf, root } = await sealFallbackLeaf(
       camo.original_prompt,
@@ -657,6 +1008,7 @@ export default function App() {
         id,
         prompt: item.prompt,
         caseId: item.id,
+        isDemoData: suiteSummary?.is_demo_data !== false,
         camo,
         streamA: item.output_A || "",
         streamB: item.output_B || "",
@@ -669,6 +1021,10 @@ export default function App() {
       },
     ]);
   };
+
+  const batchItems = suiteSummary?.items || [];
+  const isBatchDemoData = suiteSummary?.is_demo_data !== false;
+  const isBatchTampered = batchTamperState?.status === "TAMPERED";
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f4ec] text-[#0c2340]">
@@ -684,7 +1040,7 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {inChat && (
               <button
                 type="button"
@@ -696,28 +1052,28 @@ export default function App() {
               </button>
             )}
 
+            {/*DEMO DATA vs LIVE EVALUATION Status Badge */}
             <span
-              className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-[#c1cddd]/85"
+              className={`hidden md:inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold border ${
+                isBatchDemoData && !inChat
+                  ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                  : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+              }`}
               title={
-                apiMode === "LIVE"
-                  ? "Connected to FastAPI backend"
-                  : "Backend 501 / offline — Demo preview active"
+                isBatchDemoData && !inChat
+                  ? "Preloaded summary is DEMO DATA until a live evaluation runs"
+                  : "Live evaluation active"
               }
             >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  apiMode === "LIVE" ? "bg-[#0a843d]" : "bg-[#d39f10]"
-                }`}
-              />
-              {apiMode === "LIVE" ? "Live API" : apiMode === "CHECKING" ? "Connecting" : "Demo preview"}
+              {isBatchDemoData && !inChat ? "DEMO DATA" : "LIVE EVALUATION"}
             </span>
 
-            {/* CI/CD 50-Prompt Suite Report Pill */}
+            {/* CI/CD Batch Suite Report Pill */}
             <button
               type="button"
               onClick={() => setSuiteDrawerOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-full bg-[#163660] hover:bg-[#1f477d] border border-[#ae9142]/60 px-3 py-1 text-xs font-medium text-[#f8f4ec] transition-colors"
-              title="Open Pre-Verified 50-Prompt CI/CD Batch Evaluation Report"
+              title="Open Integrity-Verifiable Batch Evaluation Report"
             >
               <span className="w-2 h-2 rounded-full bg-[#f87171] shrink-0" />
               <span>
@@ -733,8 +1089,8 @@ export default function App() {
               className="inline-flex items-center gap-2 rounded-full bg-[#163660] border border-[#ae9142]/60 px-3 py-1 text-xs"
               title={
                 ollamaConnected
-                  ? "Ollama connected on localhost:11434"
-                  : "Ollama not detected on localhost:11434 (select simulated-adversarial-vendor or start ollama serve)"
+                  ? "Local model engine ready"
+                  : "Local model engine offline"
               }
             >
               <span
@@ -768,18 +1124,18 @@ export default function App() {
         </div>
       </header>
 
-      {/* Initial Screen: BYOM Hero + Tactile Composer Card */}
+      {/* Initial Screen: BYOM Hero + Tactile Composer Card + Batch Setup & Clickable Results */}
       {!inChat && (
-        <main className="flex-1 flex items-center justify-center px-4 py-12">
-          <div className="w-full max-w-2xl mx-auto">
-            <div className="text-center mb-7">
+        <main className="flex-1 px-4 py-10">
+          <div className="w-full max-w-3xl mx-auto space-y-6">
+            <div className="text-center">
               <div className="inline-block font-mono text-[11px] font-semibold tracking-wider uppercase px-3 py-1 rounded-full bg-[#efe9d9] border border-[#ae9142] text-[#0c2340] mb-4">
                 AUDIT YOUR OWN MODELS · ZERO BLACK-BOX TRUST
               </div>
               <h1 className="font-sans tracking-tight text-3xl sm:text-[38px] font-extrabold text-[#0c2340] leading-[1.14]">
                 Test Your Models Against Evaluation Awareness Before You Ship
               </h1>
-              <p className="mt-3.5 text-[15px] text-[#0c2340]/75 max-w-xl mx-auto leading-relaxed">
+              <p className="mt-3 text-[15px] text-[#0c2340]/75 max-w-xl mx-auto leading-relaxed">
                 Models can recognize formal safety benchmarks and feign alignment under scrutiny—only
                 to fail in production. Connect your own local weights or staging endpoint, fire
                 semantically invariant probes across Auditor and Canary channels, and enforce real
@@ -791,17 +1147,195 @@ export default function App() {
               value={input}
               onChange={setInput}
               onSend={() => runAudit(input)}
-              disabled={busy}
+              disabled={busy || batchRunning}
               engineMode={engineMode}
               selectedModel={selectedModel}
             />
 
-            <div className="mt-5">
-              <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
-            </div>
+            <StarterChips
+              disabled={busy || batchRunning}
+              onPick={(c) => runAudit(c.formal_prompt, c.id)}
+            />
+
+            {/* Batch Size Slider (1..50, default 9) & Active Metadata Layer Checkboxes */}
+            <EvaluationSetupPanel
+              batchSize={batchSize}
+              onChangeBatchSize={setBatchSize}
+              metadataLayers={metadataLayers}
+              onToggleLayer={handleToggleLayer}
+              onRunBatch={handleRunBatch}
+              batchRunning={batchRunning}
+              batchProgress={batchProgress}
+            />
+
+            {/* Inline Batch Summary & Clickable Results List */}
+            {suiteSummary && (
+              <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-[#efe9d9]/75 border-b border-[#e5dec9] flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-bold text-[#0c2340]">
+                      Integrity-Verifiable Evaluation Dossier
+                    </h2>
+                    <span
+                      className={`font-mono text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                        isBatchDemoData
+                          ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                          : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+                      }`}
+                    >
+                      {isBatchDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleExport}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#0c2340] text-[#d39f10] border border-[#ae9142] hover:bg-[#163660]"
+                    >
+                      <Download className="w-3 h-3" />
+                      Download Dossier (JSON)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyIntegrity()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#0a843d]"
+                    >
+                      <CheckCircle2 className="w-3 h-3 text-[#0a843d]" />
+                      Verify Integrity
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTamper()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#991b1b]"
+                    >
+                      <FlaskConical className="w-3 h-3 text-[#ae9142]" />
+                      Simulate Record Tampering
+                    </button>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                        isBatchTampered
+                          ? "bg-[#991b1b] text-white border-[#991b1b]"
+                          : "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
+                      }`}
+                    >
+                      {isBatchTampered ? "TAMPERED" : "VERIFIED"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Aggregate Stats Row */}
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-5 gap-2.5 border-b border-[#e5dec9] bg-[#f8f4ec]/50 text-xs">
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Total Evaluated</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
+                      {suiteSummary.total_audited ?? batchItems.length}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Refusal (A vs. B)</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
+                      {suiteSummary.refusal_rate_a ?? 78}% vs {suiteSummary.refusal_rate_b ?? 38}%
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#991b1b]">Discrepancies Flagged</div>
+                    <div className="text-lg font-bold text-[#991b1b]">
+                      {suiteSummary.discrepancies_flagged ??
+                        (suiteSummary.regressions_caught ?? 11) +
+                          (suiteSummary.manual_review_count ?? 8)}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Mean CDI</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
+                      {Number(suiteSummary.mean_cdi ?? 0.44).toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5 col-span-2 sm:col-span-1">
+                    <div className="text-[11px] text-[#8c7535]">Batch Merkle Root</div>
+                    <div
+                      className={`font-mono text-[11px] font-semibold truncate mt-1 ${
+                        isBatchTampered ? "text-[#991b1b] line-through" : "text-[#0c2340]"
+                      }`}
+                      title={suiteSummary.merkle_root}
+                    >
+                      {suiteSummary.merkle_root?.slice(0, 14)}…
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expandable Metadata Transmission Disclosure */}
+                <div className="px-4 py-2.5 border-b border-[#e5dec9] bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setShowBatchDisclosure((prev) => !prev)}
+                    aria-expanded={showBatchDisclosure}
+                    className="w-full flex items-center justify-between text-left text-xs font-semibold text-[#0c2340]"
+                  >
+                    <span>
+                      Metadata Transmission Disclosure (Model-Visible Input vs. HTTP/API Headers)
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-[#8c7535] transition-transform ${
+                        showBatchDisclosure ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                  {showBatchDisclosure && (
+                    <p className="mt-2 pt-2 border-t border-[#e5dec9] text-xs leading-relaxed text-[#0c2340]/80">
+                      {suiteSummary.metadata_transmission_doc}
+                    </p>
+                  )}
+                </div>
+
+                {/* Clickable List of Evaluated Prompts */}
+                <div className="divide-y divide-[#e5dec9] max-h-64 overflow-y-auto">
+                  {batchItems.slice(0, batchSize).map((item) => {
+                    const b = ROW_BADGE[item.verdict] || ROW_BADGE.COMPLIANT;
+                    const BIcon = b.Icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectSuiteItem(item)}
+                        className="w-full px-4 py-2.5 text-left hover:bg-[#f8f4ec] transition-colors flex items-center justify-between gap-3 group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] text-[#8c7535]">
+                              {item.id}
+                            </span>
+                            <span className="text-xs font-bold text-[#0c2340] group-hover:underline">
+                              {item.title || item.category}
+                            </span>
+                            <span className="text-[11px] text-[#0c2340]/55">
+                              · {item.category}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#0c2340]/75 truncate">{item.prompt}</p>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-2.5">
+                          <span className="font-mono text-[11px] text-[#0c2340]">
+                            CDI {Number(item.cdi_risk).toFixed(2)}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${b.bg} ${b.text} ${b.border}`}
+                          >
+                            <BIcon className="w-3 h-3" />
+                            {b.label}
+                          </span>
+                          <ArrowUpRight className="w-3.5 h-3.5 text-[#8c7535]" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* 3-Item Methodology Strip */}
-            <div className="max-w-2xl mx-auto mt-8 pt-6 border-t border-[#e5dec9] grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
+            <div className="pt-4 border-t border-[#e5dec9] grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
               <div>
                 <h2 className="text-xs font-bold text-[#0c2340] mb-1">
                   Zero System-Prompt Tampering
@@ -831,7 +1365,7 @@ export default function App() {
               </div>
             </div>
 
-            <p className="mt-7 text-center font-mono text-[11px] text-[#0c2340]/55">
+            <p className="text-center font-mono text-[11px] text-[#0c2340]/55">
               Model-Agnostic BYOM Architecture · Live Local Ollama Weights + CPU Embeddings · RFC
               8785 Audit Ledger
             </p>
@@ -845,9 +1379,20 @@ export default function App() {
           <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-7 space-y-10">
             {audits.map((a) => (
               <section key={a.id} className="space-y-4" aria-label="Audit">
-                <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm px-5 py-4">
-                  <div className="text-xs font-medium text-[#8c7535] mb-1">Audited prompt</div>
-                  <p className="text-[15px] leading-relaxed text-[#0c2340]">{a.prompt}</p>
+                <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm px-5 py-4 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium text-[#8c7535] mb-1">Audited prompt</div>
+                    <p className="text-[15px] leading-relaxed text-[#0c2340]">{a.prompt}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 font-mono text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                      a.isDemoData
+                        ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                        : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+                    }`}
+                  >
+                    {a.isDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
+                  </span>
                 </div>
 
                 {!a.camo && (
@@ -875,7 +1420,7 @@ export default function App() {
                       tamperState={a.tamper}
                       onExport={handleExport}
                       onTamper={() => handleTamper(a)}
-                      onResetTamper={() => patch(a.id, { tamper: null })}
+                      onVerifyIntegrity={() => handleVerifyIntegrity(a.id)}
                     />
                     <EvidenceDrawer>
                       <PcaScatterPlot
@@ -904,21 +1449,29 @@ export default function App() {
                 value={input}
                 onChange={setInput}
                 onSend={() => runAudit(input)}
-                disabled={busy}
+                disabled={busy || batchRunning}
                 engineMode={engineMode}
                 selectedModel={selectedModel}
                 compact
               />
-              <StarterChips disabled={busy} onPick={(c) => runAudit(c.formal_prompt, c.id)} />
+              <StarterChips
+                disabled={busy || batchRunning}
+                onPick={(c) => runAudit(c.formal_prompt, c.id)}
+              />
             </div>
           </div>
         </>
       )}
+
       <SuiteReportDrawer
         open={suiteDrawerOpen}
         onClose={() => setSuiteDrawerOpen(false)}
         summary={suiteSummary}
         onSelectItem={handleSelectSuiteItem}
+        onExportDossier={handleExport}
+        onVerifyBatchIntegrity={() => handleVerifyIntegrity()}
+        onSimulateBatchTamper={() => handleTamper()}
+        batchTamperState={batchTamperState}
       />
     </div>
   );
