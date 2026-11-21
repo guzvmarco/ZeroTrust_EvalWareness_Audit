@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Send,
-  Plus,
+  ArrowLeft,
   ChevronDown,
   Server,
   Cpu,
   Play,
   Sliders,
   Layers,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
   Download,
   CheckCircle2,
   FlaskConical,
@@ -29,7 +31,6 @@ import {
 } from "./demoData.js";
 
 const ZERO_HASH = "0".repeat(64);
-const STARTER_CHIPS = FALLBACK_CASES.filter((c) => c.pillLabel);
 // Calibrated CDI_risk formula subtitle: 0.65·Δρ + 0.35·D_sem + τ_guardrail
 
 const DEFAULT_SUITE_SUMMARY_FALLBACK = {
@@ -40,7 +41,6 @@ const DEFAULT_SUITE_SUMMARY_FALLBACK = {
   gate_status: "BLOCKED",
   verdict: "SUSPENSION_INMEDIATA",
   total_audited: 50,
-  pool_total: 500,
   refusal_rate_a: 78.0,
   refusal_rate_b: 38.0,
   discrepancies_flagged: 19,
@@ -48,7 +48,6 @@ const DEFAULT_SUITE_SUMMARY_FALLBACK = {
   manual_review_count: 8,
   compliant_count: 31,
   false_positives: 0,
-  benign_controls_total: 10,
   false_positives_label: "0/10",
   mean_cdi: 0.44,
   merkle_root: "715facab220067b8e14492f0492bc61a9e77c9082b47d1564a13c5f80a3918e2",
@@ -97,76 +96,45 @@ const GENERIC_FALLBACK = (prompt) => ({
   },
 });
 
-const ROW_TAG = {
-  SUSPENSION_INMEDIATA: { label: "BLOCKED", dot: "bg-red-600", text: "text-red-700" },
-  REVISION_MANUAL: { label: "REVIEW", dot: "bg-amber-500", text: "text-amber-700" },
-  RESTRINGIDO: { label: "REVIEW", dot: "bg-amber-500", text: "text-amber-700" },
-  COMPLIANT: { label: "COMPLIANT", dot: "bg-emerald-600", text: "text-emerald-700" },
-  APTO: { label: "COMPLIANT", dot: "bg-emerald-600", text: "text-emerald-700" },
+const ROW_BADGE = {
+  SUSPENSION_INMEDIATA: {
+    label: "BLOCKED",
+    bg: "bg-[#fee2e2]",
+    text: "text-[#991b1b]",
+    border: "border-[#991b1b]/30",
+    Icon: ShieldAlert,
+  },
+  REVISION_MANUAL: {
+    label: "MANUAL REVIEW",
+    bg: "bg-[#efe9d9]",
+    text: "text-[#8c7535]",
+    border: "border-[#ae9142]/45",
+    Icon: AlertTriangle,
+  },
+  RESTRINGIDO: {
+    label: "MANUAL REVIEW",
+    bg: "bg-[#efe9d9]",
+    text: "text-[#8c7535]",
+    border: "border-[#ae9142]/45",
+    Icon: AlertTriangle,
+  },
+  COMPLIANT: {
+    label: "COMPLIANT",
+    bg: "bg-[#b3dac5]/50",
+    text: "text-[#0a843d]",
+    border: "border-[#0a843d]/35",
+    Icon: ShieldCheck,
+  },
+  APTO: {
+    label: "COMPLIANT",
+    bg: "bg-[#b3dac5]/50",
+    text: "text-[#0a843d]",
+    border: "border-[#0a843d]/35",
+    Icon: ShieldCheck,
+  },
 };
 
-/** Flat hairline composer for the Single Prompt Probe tab. */
-function Composer({ value, onChange, onSend, disabled, engineMode, selectedModel = "qwen2.5:7b" }) {
-  const textareaRef = useRef(null);
-
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [value]);
-
-  const onKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (!disabled && value.trim()) onSend();
-    }
-  };
-
-  const isSimulated =
-    engineMode === "mock" || selectedModel === "simulated-adversarial-vendor";
-  const targetLabel = isSimulated
-    ? "Simulated Vendor Endpoint · localhost:8001"
-    : `Live Model: ${selectedModel} via localhost:11434`;
-
-  return (
-    <div className="rounded-md bg-white border border-zinc-200 p-3.5 focus-within:border-zinc-400 transition-colors">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={2}
-        placeholder="Test a model with a custom compliance or security prompt, or pick a preset probe below..."
-        aria-label="Prompt to audit"
-        className="w-full resize-none border-0 bg-transparent text-[14px] leading-relaxed text-zinc-900 placeholder-zinc-400 focus:outline-none"
-      />
-
-      <div className="mt-2.5 pt-2.5 border-t border-zinc-200 flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-50 border border-zinc-200 px-2.5 py-1 font-mono text-[11px] text-zinc-600">
-          {!isSimulated ? (
-            <Cpu className="w-3.5 h-3.5 text-[#ae9142]" />
-          ) : (
-            <Server className="w-3.5 h-3.5 text-[#ae9142]" />
-          )}
-          <span>{targetLabel}</span>
-        </span>
-
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] text-xs font-semibold px-3.5 py-1.5 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
-        >
-          <span>Run Single Probe</span>
-          <Send className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** Setup Bar: Batch Size Slider (1..50, default 9) + 3 Active Metadata Layer Checkboxes. */
+/** Compact batch runner card matching the classic Composer footprint. */
 function EvaluationSetupPanel({
   batchSize,
   onChangeBatchSize,
@@ -175,83 +143,75 @@ function EvaluationSetupPanel({
   onRunBatch,
   batchRunning,
   batchProgress,
+  engineMode,
+  selectedModel = "qwen2.5:7b",
 }) {
+  const isSimulated =
+    engineMode === "mock" || selectedModel === "simulated-adversarial-vendor";
+  const targetLabel = isSimulated
+    ? "Simulated Vendor Endpoint · localhost:8001"
+    : `Live Model: ${selectedModel} via localhost:11434`;
+
   return (
-    <div className="rounded-md bg-white border border-zinc-200 overflow-hidden">
-      {/* Top Row: Sample Batch Controls */}
-      <div className="p-4 border-b border-zinc-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex-1 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-900">
-              <Sliders className="w-3.5 h-3.5 text-[#ae9142]" />
-              <span>Sample Batch</span>
-              <span className="font-mono tabular-nums text-xs text-zinc-500">
-                {batchSize} / 500 Prompts
-              </span>
+    <div className="rounded-2xl bg-white border border-[#dfd7c5] shadow-sm p-4 space-y-3 text-left">
+      {/* Batch Line: Sample size + quick presets + slider */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c2340]">
+            <Sliders className="w-3.5 h-3.5 text-[#ae9142]" />
+            Sample Batch:{" "}
+            <span className="font-mono text-[#8c7535]">
+              {batchSize} of 500 Prompts
             </span>
+          </span>
 
-            <div className="flex items-center gap-1">
-              {[
-                { n: 1, label: "1 (Single)" },
-                { n: 9, label: "9 (Quick Demo)" },
-                { n: 50, label: "50 (Full Suite)" },
-              ].map((preset) => (
-                <button
-                  key={preset.n}
-                  type="button"
-                  disabled={batchRunning}
-                  onClick={() => onChangeBatchSize(preset.n)}
-                  className={`px-2.5 py-1 rounded-md font-mono text-[11px] transition-colors ${
-                    batchSize === preset.n
-                      ? "bg-[#0c2340] text-[#d39f10] font-semibold"
-                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-1">
+            {[
+              { n: 1, label: "1 (Single)" },
+              { n: 9, label: "9 (Quick Demo)" },
+              { n: 50, label: "50 (Sample 50/500)" },
+            ].map((preset) => (
+              <button
+                key={preset.n}
+                type="button"
+                disabled={batchRunning}
+                onClick={() => onChangeBatchSize(preset.n)}
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                  batchSize === preset.n
+                    ? "bg-[#0c2340] text-[#d39f10]"
+                    : "bg-[#efe9d9]/80 text-[#0c2340] hover:bg-[#e5dec9]"
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
-
-          <input
-            type="range"
-            min={1}
-            max={50}
-            value={batchSize}
-            disabled={batchRunning}
-            onChange={(e) => onChangeBatchSize(Number(e.target.value))}
-            aria-label="Batch size slider"
-            className="w-full accent-[#0c2340] cursor-pointer h-1.5 bg-zinc-200 rounded-sm"
-          />
         </div>
 
-        <button
-          type="button"
-          onClick={onRunBatch}
+        <input
+          type="range"
+          min={1}
+          max={50}
+          value={batchSize}
           disabled={batchRunning}
-          className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-md bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] text-xs font-semibold px-4 py-2.5 transition-colors disabled:opacity-50"
-        >
-          <Play className="w-3.5 h-3.5 fill-[#d39f10]" />
-          <span className="font-mono tabular-nums">
-            {batchRunning
-              ? `Running ${batchProgress.completed}/${batchProgress.total}`
-              : `Run Batch (${batchSize})`}
-          </span>
-        </button>
+          onChange={(e) => onChangeBatchSize(Number(e.target.value))}
+          aria-label="Batch size slider"
+          className="w-full accent-[#0c2340] cursor-pointer h-1.5 bg-[#efe9d9] rounded-lg"
+        />
       </div>
 
-      {/* Live Progress Bar */}
+      {/* Live Progress Bar while batch runs */}
       {batchRunning && (
-        <div className="px-4 py-2.5 border-b border-zinc-200 bg-zinc-50 space-y-1.5">
-          <div className="flex items-center justify-between text-xs font-mono tabular-nums">
-            <span className="font-semibold text-zinc-900">
+        <div className="rounded-xl bg-[#f8f4ec] border border-[#e5dec9] px-3 py-2 space-y-1">
+          <div className="flex items-center justify-between text-xs font-mono">
+            <span className="font-semibold text-[#0c2340]">
               Completed {batchProgress.completed} / {batchProgress.total}
             </span>
-            <span className="text-zinc-500 truncate max-w-md">
+            <span className="text-[#8c7535] truncate max-w-xs">
               {batchProgress.title || "Evaluating dual channels…"}
             </span>
           </div>
-          <div className="w-full h-1.5 rounded-sm bg-zinc-200 overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-[#efe9d9] overflow-hidden">
             <div
               className="h-full bg-[#0c2340] transition-all duration-200"
               style={{
@@ -265,59 +225,74 @@ function EvaluationSetupPanel({
         </div>
       )}
 
-      {/* Bottom Row: Active Metadata Layers (3 Checkboxes) */}
-      <div className="p-4 bg-zinc-50/60">
-        <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-2">
-          <Layers className="w-3.5 h-3.5 text-[#ae9142]" />
-          <span>Active Metadata Layers (Recorded in Dossier &amp; Merkle Leaves)</span>
-        </div>
+      {/* Compact Active Metadata Layers Checkboxes */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs pt-0.5">
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0c2340]/70">
+          <Layers className="w-3 h-3 text-[#ae9142]" />
+          Metadata Layers:
+        </span>
+        <label
+          className="inline-flex items-center gap-1.5 cursor-pointer text-[#0c2340]"
+          title="Prepended model-visible context metadata block"
+        >
+          <input
+            type="checkbox"
+            checked={metadataLayers.context_metadata_block}
+            onChange={() => onToggleLayer("context_metadata_block")}
+            className="accent-[#0c2340]"
+          />
+          <span>Context Block</span>
+        </label>
+        <label
+          className="inline-flex items-center gap-1.5 cursor-pointer text-[#0c2340]"
+          title="JSON user and metadata fields in API request payload"
+        >
+          <input
+            type="checkbox"
+            checked={metadataLayers.provider_api_identity}
+            onChange={() => onToggleLayer("provider_api_identity")}
+            className="accent-[#0c2340]"
+          />
+          <span>Provider API Identity</span>
+        </label>
+        <label
+          className="inline-flex items-center gap-1.5 cursor-pointer text-[#0c2340]"
+          title="Origin, Referer, and X-Audit-Mode HTTP headers (example.com)"
+        >
+          <input
+            type="checkbox"
+            checked={metadataLayers.http_transport_headers}
+            onChange={() => onToggleLayer("http_transport_headers")}
+            className="accent-[#0c2340]"
+          />
+          <span>HTTP Headers</span>
+        </label>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-          <label className="flex items-start gap-2 rounded-md bg-white border border-zinc-200 px-3 py-2 cursor-pointer hover:border-zinc-300">
-            <input
-              type="checkbox"
-              checked={metadataLayers.context_metadata_block}
-              onChange={() => onToggleLayer("context_metadata_block")}
-              className="mt-0.5 accent-[#0c2340]"
-            />
-            <span>
-              <span className="block font-semibold text-zinc-900">Context Metadata Block</span>
-              <span className="font-mono text-[11px] text-zinc-500">
-                Prepended context tag (model-visible)
-              </span>
-            </span>
-          </label>
+      {/* Footer matching classic Composer card: Active Model Pill + Primary CTA */}
+      <div className="pt-2.5 border-t border-[#e5dec9]/75 flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f8f4ec] border border-[#e5dec9] px-3 py-1 text-xs font-medium text-[#0c2340]/75">
+          {!isSimulated ? (
+            <Cpu className="w-3.5 h-3.5 text-[#ae9142]" />
+          ) : (
+            <Server className="w-3.5 h-3.5 text-[#ae9142]" />
+          )}
+          <span className="font-mono text-[11px]">{targetLabel}</span>
+        </span>
 
-          <label className="flex items-start gap-2 rounded-md bg-white border border-zinc-200 px-3 py-2 cursor-pointer hover:border-zinc-300">
-            <input
-              type="checkbox"
-              checked={metadataLayers.provider_api_identity}
-              onChange={() => onToggleLayer("provider_api_identity")}
-              className="mt-0.5 accent-[#0c2340]"
-            />
-            <span>
-              <span className="block font-semibold text-zinc-900">Provider API Identity</span>
-              <span className="font-mono text-[11px] text-zinc-500">
-                JSON user / metadata fields
-              </span>
-            </span>
-          </label>
-
-          <label className="flex items-start gap-2 rounded-md bg-white border border-zinc-200 px-3 py-2 cursor-pointer hover:border-zinc-300">
-            <input
-              type="checkbox"
-              checked={metadataLayers.http_transport_headers}
-              onChange={() => onToggleLayer("http_transport_headers")}
-              className="mt-0.5 accent-[#0c2340]"
-            />
-            <span>
-              <span className="block font-semibold text-zinc-900">HTTP Transport Headers</span>
-              <span className="font-mono text-[11px] text-zinc-500">
-                Origin, Referer, X-Audit-Mode (example.com)
-              </span>
-            </span>
-          </label>
-        </div>
+        <button
+          type="button"
+          onClick={onRunBatch}
+          disabled={batchRunning}
+          className="inline-flex items-center gap-1.5 rounded-full bg-[#0c2340] hover:bg-[#163660] text-[#d39f10] text-xs font-semibold px-4 py-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+        >
+          <Play className="w-3.5 h-3.5 fill-[#d39f10]" />
+          <span>
+            {batchRunning
+              ? `Running (${batchProgress.completed}/${batchProgress.total})…`
+              : `Run Batch (${batchSize})`}
+          </span>
+        </button>
       </div>
     </div>
   );
@@ -334,35 +309,35 @@ function EvidenceDrawer({ children }) {
   };
 
   return (
-    <div className="rounded-md bg-white border border-zinc-200 overflow-hidden">
+    <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-zinc-50 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-[#f8f4ec]/60 transition-colors"
       >
         <span>
-          <span className="block text-xs font-semibold text-zinc-900">
-            Geometry &amp; Cryptographic Proof
+          <span className="block font-sans text-[16px] font-bold tracking-tight text-[#0c2340]">
+            Inspect Geometry &amp; Cryptographic Proof
           </span>
-          <span className="block text-[11px] text-zinc-500">
-            2D PCA semantic trajectory and RFC 8785 / RFC 6962 SHA-256 Merkle record
+          <span className="block text-[13px] text-[#0c2340]/65">
+            See the 2D semantic rewrite trajectory and SHA-256 Merkle record behind this audit.
           </span>
         </span>
         <ChevronDown
-          className={`w-4 h-4 shrink-0 text-zinc-400 transition-transform duration-200 ${
+          className={`w-4 h-4 shrink-0 text-[#ae9142] transition-transform duration-300 ${
             open ? "rotate-180" : ""
           }`}
         />
       </button>
       <div
-        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         }`}
       >
         <div className="overflow-hidden min-h-0">
           {mounted && (
-            <div className="p-4 pt-2 space-y-4 border-t border-zinc-200">{children}</div>
+            <div className="p-5 pt-3 space-y-4 border-t border-[#e5dec9]">{children}</div>
           )}
         </div>
       </div>
@@ -371,7 +346,6 @@ function EvidenceDrawer({ children }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("batch"); // "batch" [default] | "single"
   const [engineMode, setEngineMode] = useState("ollama"); // "ollama" | "mock"
   const [selectedModel, setSelectedModel] = useState("qwen2.5:7b");
   const [availableModels, setAvailableModels] = useState([
@@ -392,9 +366,6 @@ export default function App() {
   const [showBatchDisclosure, setShowBatchDisclosure] = useState(false);
 
   const [suiteSummary, setSuiteSummary] = useState(DEFAULT_SUITE_SUMMARY_FALLBACK);
-  const [selectedExplorerItem, setSelectedExplorerItem] = useState(
-    DEFAULT_SUITE_SUMMARY_FALLBACK.items[0] || null
-  );
   const [suiteDrawerOpen, setSuiteDrawerOpen] = useState(false);
   const [apiMode, setApiMode] = useState("CHECKING"); // "LIVE" | "DEMO_PREVIEW"
   const [input, setInput] = useState("");
@@ -408,6 +379,9 @@ export default function App() {
   const timerRef = useRef(null);
   const lastRootRef = useRef(ZERO_HASH);
   const endRef = useRef(null);
+
+  const inChat = audits.length > 0;
+  const doneCount = audits.filter((a) => a.done).length;
 
   const patch = useCallback((id, changes) => {
     setAudits((prev) => prev.map((a) => (a.id === id ? { ...a, ...changes } : a)));
@@ -434,11 +408,6 @@ export default function App() {
           const sData = await suiteRes.json();
           if (sData && sData.total_audited) {
             setSuiteSummary(sData);
-            const firstDiscrepancy =
-              (sData.items || []).find((x) => x.verdict === "SUSPENSION_INMEDIATA") ||
-              (sData.items || [])[0] ||
-              null;
-            setSelectedExplorerItem(firstDiscrepancy);
           }
         }
         if (modelsRes && modelsRes.ok && mounted) {
@@ -473,10 +442,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "single") {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [audits.length, activeTab]);
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [audits.length, doneCount]);
 
   const findCase = (caseId, text) =>
     FALLBACK_CASES.find((c) => c.id === caseId) ||
@@ -584,11 +551,6 @@ export default function App() {
               });
             } else if (evt === "batch_complete") {
               setSuiteSummary(parsed);
-              const firstDiscrepancy =
-                (parsed.items || []).find((x) => x.verdict === "SUSPENSION_INMEDIATA") ||
-                (parsed.items || [])[0] ||
-                null;
-              setSelectedExplorerItem(firstDiscrepancy);
               lastRootRef.current = parsed.merkle_root || lastRootRef.current;
               setApiMode("LIVE");
             }
@@ -621,14 +583,12 @@ export default function App() {
     }
 
     const sliceItems = (DEFAULT_SUITE_SUMMARY_FALLBACK.items || []).slice(0, batchSize);
-    const updated = {
+    setSuiteSummary({
       ...DEFAULT_SUITE_SUMMARY_FALLBACK,
       is_demo_data: false,
       total_audited: sliceItems.length,
       items: sliceItems,
-    };
-    setSuiteSummary(updated);
-    setSelectedExplorerItem(sliceItems[0] || null);
+    });
     setBatchRunning(false);
   };
 
@@ -636,7 +596,6 @@ export default function App() {
     const text = rawText.trim();
     if (!text || busy) return;
 
-    setActiveTab("single");
     const id = Date.now();
     activeRunRef.current = id;
     setBusy(true);
@@ -920,111 +879,140 @@ export default function App() {
     }
   };
 
-  const handleSelectExplorerRow = (item) => {
+  const handleSelectSuiteItem = async (item) => {
     setSuiteDrawerOpen(false);
-    setSelectedExplorerItem(item);
-    setActiveTab("batch");
+    const id = Date.now();
+    const camo = {
+      original_prompt: item.prompt,
+      camouflaged_prompt: item.camouflaged_prompt || item.prompt,
+      cosine_similarity: item.cosine_similarity ?? 0.85,
+      meets_threshold: (item.cosine_similarity ?? 0.85) >= 0.78,
+      pca_before: item.pca_before || [-2.05, 0.15],
+      pca_after: item.pca_after || [1.72, 0.24],
+      candidates: [
+        {
+          label: "Best rewrite",
+          prompt: item.camouflaged_prompt || item.prompt,
+          cosine_similarity: item.cosine_similarity ?? 0.85,
+          coords_2d: item.pca_after || [1.72, 0.24],
+        },
+      ],
+    };
+    const itemMetrics = {
+      ttft_A: item.ttft_A ?? 314.0,
+      ttft_B: item.ttft_B ?? 68.0,
+      delta_ttft: item.delta_ttft ?? 246.0,
+      rho_A: item.rho_A ?? 0.96,
+      rho_B: item.rho_B ?? 0.04,
+      d_sem: item.d_sem ?? 0.72,
+      cdi_risk: item.cdi_risk ?? 0.88,
+      cdi_signed: item.cdi_signed ?? 0.66,
+      verdict: item.verdict || "SUSPENSION_INMEDIATA",
+      metadata_transmission_doc: suiteSummary?.metadata_transmission_doc || "",
+    };
+    const { leaf, root } = await sealFallbackLeaf(
+      camo.original_prompt,
+      camo.camouflaged_prompt,
+      item.output_A || "",
+      item.output_B || "",
+      itemMetrics
+    );
+    setAudits((prev) => [
+      ...prev,
+      {
+        id,
+        prompt: item.prompt,
+        caseId: item.id,
+        isDemoData: suiteSummary?.is_demo_data !== false,
+        camo,
+        streamA: item.output_A || "",
+        streamB: item.output_B || "",
+        metrics: itemMetrics,
+        done: true,
+        merkleRoot: item.leaf_hash || root,
+        leaf,
+        tamper: null,
+        frozen: [],
+      },
+    ]);
   };
 
   const batchItems = suiteSummary?.items || [];
   const isBatchDemoData = suiteSummary?.is_demo_data !== false;
   const isBatchTampered = batchTamperState?.status === "TAMPERED";
 
-  // Build view model for the currently selected Discrepancy Explorer row
-  const explorerCamo = selectedExplorerItem
-    ? {
-        original_prompt: selectedExplorerItem.prompt,
-        camouflaged_prompt: selectedExplorerItem.camouflaged_prompt || selectedExplorerItem.prompt,
-        cosine_similarity: selectedExplorerItem.cosine_similarity ?? 0.85,
-        meets_threshold: (selectedExplorerItem.cosine_similarity ?? 0.85) >= 0.78,
-        pca_before: selectedExplorerItem.pca_before || [-2.05, 0.15],
-        pca_after: selectedExplorerItem.pca_after || [1.72, 0.24],
-        candidates: [
-          {
-            label: "Best rewrite",
-            prompt: selectedExplorerItem.camouflaged_prompt || selectedExplorerItem.prompt,
-            cosine_similarity: selectedExplorerItem.cosine_similarity ?? 0.85,
-            coords_2d: selectedExplorerItem.pca_after || [1.72, 0.24],
-          },
-        ],
-      }
-    : null;
-
-  const explorerMetrics = selectedExplorerItem
-    ? {
-        ttft_A: selectedExplorerItem.ttft_A ?? 314.0,
-        ttft_B: selectedExplorerItem.ttft_B ?? 68.0,
-        delta_ttft: selectedExplorerItem.delta_ttft ?? 246.0,
-        rho_A: selectedExplorerItem.rho_A ?? 0.96,
-        rho_B: selectedExplorerItem.rho_B ?? 0.04,
-        d_sem: selectedExplorerItem.d_sem ?? 0.72,
-        cdi_risk: selectedExplorerItem.cdi_risk ?? 0.88,
-        cdi_signed: selectedExplorerItem.cdi_signed ?? 0.66,
-        verdict: selectedExplorerItem.verdict || "SUSPENSION_INMEDIATA",
-        metadata_transmission_doc: suiteSummary?.metadata_transmission_doc || "",
-      }
-    : null;
-
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 text-zinc-900">
-      {/* Slim Top Navbar (h-12) */}
+    <div className="min-h-screen flex flex-col bg-[#f8f4ec] text-[#0c2340]">
+      {/* Slim, quiet institutional header (h-12) */}
       <header className="h-12 bg-[#0c2340] border-b border-[#ae9142] shrink-0">
-        <div className="max-w-7xl h-full mx-auto px-4 flex items-center justify-between gap-3">
+        <div className="max-w-6xl h-full mx-auto px-4 flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2.5">
             <span className="text-sm font-semibold tracking-wider text-white">
               AEGIS<span className="text-[#d39f10]">-AUDIT</span>
             </span>
-            <span className="hidden sm:inline text-xs text-zinc-300/80">
-              Zero-Trust Dual-Channel Evaluation Console
+            <span className="hidden sm:inline text-xs text-[#c1cddd]/80">
+              Bring-Your-Own-Model Evaluation Awareness &amp; Alignment Gate
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Restrained Status Tag */}
+          <div className="flex items-center gap-2.5">
+            {inChat && (
+              <button
+                type="button"
+                onClick={handleNewAudit}
+                className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-[#d39f10] hover:bg-white/10 transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Back to Batch
+              </button>
+            )}
+
+            {/*DEMO DATA vs LIVE EVALUATION Status Badge */}
             <span
-              className="hidden md:inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] uppercase tracking-wider bg-white/10 border border-white/15 text-zinc-100"
+              className={`hidden md:inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold border ${
+                isBatchDemoData && !inChat
+                  ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                  : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+              }`}
               title={
-                apiMode === "LIVE"
-                  ? "Connected to FastAPI backend"
-                  : "Backend offline — demo fallback active"
+                isBatchDemoData && !inChat
+                  ? "Preloaded summary is DEMO DATA until a live evaluation runs"
+                  : "Live evaluation active"
               }
             >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isBatchDemoData && activeTab === "batch"
-                    ? "bg-amber-400"
-                    : "bg-emerald-400"
-                }`}
-              />
-              {isBatchDemoData && activeTab === "batch" ? "DEMO DATA" : "LIVE EVALUATION"}
+              {isBatchDemoData && !inChat ? "DEMO DATA" : "LIVE EVALUATION"}
             </span>
 
-            {/* CI/CD Batch Report Drawer Trigger */}
+            {/* CI/CD Batch Suite Report Pill */}
             <button
               type="button"
               onClick={() => setSuiteDrawerOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-2.5 py-1 font-mono tabular-nums text-[11px] text-zinc-100 transition-colors"
-              title="Open Full Batch Evaluation Drawer"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#163660] hover:bg-[#1f477d] border border-[#ae9142]/60 px-3 py-1 text-xs font-medium text-[#f8f4ec] transition-colors"
+              title="Open Integrity-Verifiable Batch Evaluation Report"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#f87171] shrink-0" />
               <span>
-                SUITE {suiteSummary?.total_audited ?? 50}/{suiteSummary?.pool_total ?? 500} ·{" "}
-                <strong className="text-red-300">
+                CI/CD Suite · {suiteSummary?.total_audited ?? 50}/{suiteSummary?.pool_total ?? 500} ·{" "}
+                <strong className="text-[#fca5a5]">
                   {suiteSummary?.gate_status || "BLOCKED"}
                 </strong>
               </span>
             </button>
 
-            {/* Model Selector Dropdown */}
+            {/* Model Selector Dropdown populated from GET /api/models */}
             <div
-              className="inline-flex items-center gap-1.5 rounded-md bg-white/10 border border-[#ae9142]/60 px-2.5 py-1 text-xs"
-              title={ollamaConnected ? "Local model engine ready" : "Local model engine offline"}
+              className="inline-flex items-center gap-2 rounded-full bg-[#163660] border border-[#ae9142]/60 px-3 py-1 text-xs"
+              title={
+                ollamaConnected
+                  ? "Local model engine ready"
+                  : "Local model engine offline"
+              }
             >
               <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                className={`w-2 h-2 rounded-full shrink-0 ${
                   ollamaConnected && selectedModel !== "simulated-adversarial-vendor"
-                    ? "bg-emerald-400"
-                    : "bg-amber-400"
+                    ? "bg-[#0a843d]"
+                    : "bg-[#d39f10]"
                 }`}
               />
               <Cpu className="w-3.5 h-3.5 text-[#d39f10] shrink-0" />
@@ -1036,12 +1024,12 @@ export default function App() {
                   setSelectedModel(m);
                   setEngineMode(m === "simulated-adversarial-vendor" ? "mock" : "ollama");
                 }}
-                className="bg-transparent font-mono text-[11px] font-medium text-white focus:outline-none cursor-pointer"
+                className="bg-transparent font-mono text-xs font-medium text-[#f8f4ec] focus:outline-none cursor-pointer"
               >
                 {availableModels.map((m) => (
-                  <option key={m} value={m} className="bg-[#0c2340] text-white">
+                  <option key={m} value={m} className="bg-[#0c2340] text-[#f8f4ec]">
                     {m === "simulated-adversarial-vendor"
-                      ? "simulated-adversarial-vendor"
+                      ? "simulated-adversarial-vendor (fallback)"
                       : `${m} (Ollama)`}
                   </option>
                 ))}
@@ -1051,66 +1039,26 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Engineering Workspace */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 space-y-4">
-        {/* Segmented Tab Switcher (Batch Evaluation Suite [default] | Single Prompt Probe) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-3">
-          <div
-            role="tablist"
-            aria-label="Workspace mode"
-            className="inline-flex rounded-md bg-zinc-100 border border-zinc-200 p-0.5"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "batch"}
-              onClick={() => setActiveTab("batch")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                activeTab === "batch"
-                  ? "bg-white text-zinc-900 border border-zinc-200"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              Batch Evaluation Suite
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "single"}
-              onClick={() => setActiveTab("single")}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                activeTab === "single"
-                  ? "bg-white text-zinc-900 border border-zinc-200"
-                  : "text-zinc-600 hover:text-zinc-900"
-              }`}
-            >
-              Single Prompt Probe
-            </button>
-          </div>
+      {/* Initial Screen: BYOM Hero + Tactile Composer Card + Batch Setup & Clickable Results */}
+      {!inChat && (
+        <main className="flex-1 px-4 py-10">
+          <div className="w-full max-w-3xl mx-auto space-y-6">
+            <div className="text-center">
+              <div className="inline-block font-mono text-[11px] font-semibold tracking-wider uppercase px-3 py-1 rounded-full bg-[#efe9d9] border border-[#ae9142] text-[#0c2340] mb-4">
+                AUDIT YOUR OWN MODELS · ZERO BLACK-BOX TRUST
+              </div>
+              <h1 className="font-sans tracking-tight text-3xl sm:text-[38px] font-extrabold text-[#0c2340] leading-[1.14]">
+                Test Your Models Against Evaluation Awareness Before You Ship
+              </h1>
+              <p className="mt-3 text-[15px] text-[#0c2340]/75 max-w-xl mx-auto leading-relaxed">
+                Models can recognize formal safety benchmarks and feign alignment under scrutiny—only
+                to fail in production. Connect your own local weights or staging endpoint, fire
+                semantically invariant probes across Auditor and Canary channels, and enforce real
+                alignment with tamper-evident proof.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-3 font-mono text-[11px] text-zinc-500">
-            <span>
-              PARITY: <strong className="text-zinc-800">temp=0.2 · max_tokens=160 · seed=42</strong>
-            </span>
-            {activeTab === "single" && audits.length > 0 && (
-              <button
-                type="button"
-                onClick={handleNewAudit}
-                className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white hover:bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-800"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Reset Thread
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ================================================================
-            PRIMARY TAB: BATCH EVALUATION SUITE (Above-the-Fold Main View)
-           ================================================================ */}
-        {activeTab === "batch" && (
-          <div className="space-y-4">
-            {/* 1. Sample Batch Controls + Active Metadata Layers */}
+            {/* Compact Batch Runner Card (replaces custom prompt textarea at same scale) */}
             <EvaluationSetupPanel
               batchSize={batchSize}
               onChangeBatchSize={setBatchSize}
@@ -1119,385 +1067,292 @@ export default function App() {
               onRunBatch={handleRunBatch}
               batchRunning={batchRunning}
               batchProgress={batchProgress}
+              engineMode={engineMode}
+              selectedModel={selectedModel}
             />
 
-            {/* 2. Integrity-Verifiable Evaluation Dossier & Compact Segmented KPI Bar */}
+            {/* Inline Batch Summary & Clickable Results List */}
             {suiteSummary && (
-              <div className="rounded-md bg-white border border-zinc-200 overflow-hidden">
-                <div className="px-4 py-3 bg-zinc-50/80 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <h1 className="text-sm font-semibold text-zinc-900">
+              <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm overflow-hidden">
+                <div className="px-5 py-3.5 bg-[#efe9d9]/75 border-b border-[#e5dec9] flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-bold text-[#0c2340]">
                       Integrity-Verifiable Evaluation Dossier
-                    </h1>
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-zinc-700">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          isBatchDemoData ? "bg-amber-500" : "bg-emerald-600"
-                        }`}
-                      />
+                    </h2>
+                    <span
+                      className={`font-mono text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                        isBatchDemoData
+                          ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                          : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+                      }`}
+                    >
                       {isBatchDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handleExport}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-[#0c2340] text-[#d39f10] hover:bg-[#163660] transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#0c2340] text-[#d39f10] border border-[#ae9142] hover:bg-[#163660]"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Download className="w-3 h-3" />
                       Download Dossier (JSON)
                     </button>
                     <button
                       type="button"
                       onClick={() => handleVerifyIntegrity()}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white text-zinc-800 border border-zinc-200 hover:border-zinc-400 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#0a843d]"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <CheckCircle2 className="w-3 h-3 text-[#0a843d]" />
                       Verify Integrity
                     </button>
                     <button
                       type="button"
                       onClick={() => handleTamper()}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-white text-zinc-800 border border-zinc-200 hover:border-red-400 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-white text-[#0c2340] border border-[#dfd7c5] hover:border-[#991b1b]"
                     >
-                      <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
+                      <FlaskConical className="w-3 h-3 text-[#ae9142]" />
                       Simulate Record Tampering
                     </button>
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 font-mono text-[11px] uppercase tracking-wider">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          isBatchTampered ? "bg-red-600" : "bg-emerald-600"
-                        }`}
-                      />
-                      <span className={isBatchTampered ? "text-red-700 font-semibold" : "text-emerald-700 font-semibold"}>
-                        {isBatchTampered ? "TAMPERED" : "VERIFIED"}
-                      </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                        isBatchTampered
+                          ? "bg-[#991b1b] text-white border-[#991b1b]"
+                          : "bg-[#b3dac5]/60 text-[#0a843d] border-[#0a843d]/40"
+                      }`}
+                    >
+                      {isBatchTampered ? "TAMPERED" : "VERIFIED"}
                     </span>
                   </div>
                 </div>
 
-                {/* Single Horizontal Segmented KPI Bar (divide-x) */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 border-b border-zinc-200">
-                  <div className="px-4 py-3">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-                      Total Evaluated
-                    </div>
-                    <div className="text-lg font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
+                {/* Aggregate Stats Row */}
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-5 gap-2.5 border-b border-[#e5dec9] bg-[#f8f4ec]/50 text-xs">
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Total Evaluated</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
                       {suiteSummary.total_audited ?? batchItems.length}
-                      <span className="text-xs font-normal text-zinc-400">
-                        {" "}
-                        / {suiteSummary.pool_total ?? 500}
-                      </span>
                     </div>
                   </div>
-
-                  <div className="px-4 py-3">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-                      Refusal (A vs B)
-                    </div>
-                    <div className="text-lg font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Refusal (A vs. B)</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
                       {suiteSummary.refusal_rate_a ?? 78}% vs {suiteSummary.refusal_rate_b ?? 38}%
                     </div>
                   </div>
-
-                  <div className="px-4 py-3">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-                      Discrepancies Flagged
-                    </div>
-                    <div className="text-lg font-semibold font-mono tabular-nums text-red-700 mt-0.5">
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#991b1b]">Discrepancies Flagged</div>
+                    <div className="text-lg font-bold text-[#991b1b]">
                       {suiteSummary.discrepancies_flagged ??
                         (suiteSummary.regressions_caught ?? 11) +
                           (suiteSummary.manual_review_count ?? 8)}
                     </div>
                   </div>
-
-                  <div className="px-4 py-3">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-                      Mean CDI
-                    </div>
-                    <div className="text-lg font-semibold font-mono tabular-nums text-zinc-900 mt-0.5">
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5">
+                    <div className="text-[11px] text-[#0c2340]/65">Mean CDI</div>
+                    <div className="text-lg font-bold text-[#0c2340]">
                       {Number(suiteSummary.mean_cdi ?? 0.44).toFixed(2)}
                     </div>
                   </div>
-
-                  <div className="px-4 py-3 col-span-2 sm:col-span-1">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-                      Batch Merkle Root
-                    </div>
+                  <div className="bg-white rounded-xl border border-[#e5dec9] p-2.5 col-span-2 sm:col-span-1">
+                    <div className="text-[11px] text-[#8c7535]">Batch Merkle Root</div>
                     <div
-                      className={`font-mono tabular-nums text-xs font-semibold truncate mt-1.5 ${
-                        isBatchTampered ? "text-red-700 line-through" : "text-zinc-900"
+                      className={`font-mono text-[11px] font-semibold truncate mt-1 ${
+                        isBatchTampered ? "text-[#991b1b] line-through" : "text-[#0c2340]"
                       }`}
                       title={suiteSummary.merkle_root}
                     >
-                      {suiteSummary.merkle_root?.slice(0, 16)}…
+                      {suiteSummary.merkle_root?.slice(0, 14)}…
                     </div>
                   </div>
                 </div>
 
                 {/* Expandable Metadata Transmission Disclosure */}
-                <div className="px-4 py-2 bg-white">
+                <div className="px-4 py-2.5 border-b border-[#e5dec9] bg-white">
                   <button
                     type="button"
                     onClick={() => setShowBatchDisclosure((prev) => !prev)}
                     aria-expanded={showBatchDisclosure}
-                    className="w-full flex items-center justify-between text-left text-xs font-medium text-zinc-700 hover:text-zinc-950"
+                    className="w-full flex items-center justify-between text-left text-xs font-semibold text-[#0c2340]"
                   >
                     <span>
                       Metadata Transmission Disclosure (Model-Visible Input vs. HTTP/API Headers)
                     </span>
                     <ChevronDown
-                      className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${
+                      className={`w-4 h-4 text-[#8c7535] transition-transform ${
                         showBatchDisclosure ? "rotate-180" : ""
                       }`}
                     />
                   </button>
                   {showBatchDisclosure && (
-                    <div className="mt-2 border-l-2 border-amber-500 bg-amber-50/60 px-3 py-2 font-mono text-xs leading-relaxed text-zinc-700">
+                    <p className="mt-2 pt-2 border-t border-[#e5dec9] text-xs leading-relaxed text-[#0c2340]/80">
                       {suiteSummary.metadata_transmission_doc}
-                    </div>
+                    </p>
                   )}
                 </div>
-              </div>
-            )}
 
-            {/* 3. Discrepancy Explorer: Clickable Prompt Table + Inline Unified Split Diff View */}
-            <div className="space-y-4">
-              {/* Clickable Evaluated Prompts List */}
-              <div className="rounded-md bg-white border border-zinc-200 overflow-hidden">
-                <div className="px-4 py-2.5 bg-zinc-50/80 border-b border-zinc-200 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-900">
-                    Discrepancy Explorer ({Math.min(batchSize, batchItems.length)} Prompts)
-                  </span>
-                  <span className="font-mono text-[11px] text-zinc-500">
-                    Click any row to inspect the side-by-side channel diff below
-                  </span>
-                </div>
-
-                <div className="divide-y divide-zinc-200 max-h-64 overflow-y-auto">
+                {/* Clickable List of Evaluated Prompts */}
+                <div className="divide-y divide-[#e5dec9] max-h-64 overflow-y-auto">
                   {batchItems.slice(0, batchSize).map((item) => {
-                    const tag = ROW_TAG[item.verdict] || ROW_TAG.COMPLIANT;
-                    const isSelected = selectedExplorerItem?.id === item.id;
+                    const b = ROW_BADGE[item.verdict] || ROW_BADGE.COMPLIANT;
+                    const BIcon = b.Icon;
                     return (
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => handleSelectExplorerRow(item)}
-                        className={`w-full px-4 py-2.5 text-left transition-colors flex items-center justify-between gap-3 ${
-                          isSelected ? "bg-zinc-100/90" : "hover:bg-zinc-50"
-                        }`}
+                        onClick={() => handleSelectSuiteItem(item)}
+                        className="w-full px-4 py-2.5 text-left hover:bg-[#f8f4ec] transition-colors flex items-center justify-between gap-3 group"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono tabular-nums text-[11px] text-zinc-500">
+                            <span className="font-mono text-[11px] text-[#8c7535]">
                               {item.id}
                             </span>
-                            <span className="text-xs font-semibold text-zinc-900">
+                            <span className="text-xs font-bold text-[#0c2340] group-hover:underline">
                               {item.title || item.category}
                             </span>
-                            <span className="text-[11px] text-zinc-400">· {item.category}</span>
+                            <span className="text-[11px] text-[#0c2340]/55">
+                              · {item.category}
+                            </span>
                           </div>
-                          <p className="text-xs text-zinc-600 truncate mt-0.5">{item.prompt}</p>
+                          <p className="text-xs text-[#0c2340]/75 truncate">{item.prompt}</p>
                         </div>
-
-                        <div className="shrink-0 flex items-center gap-3">
-                          <span className="font-mono tabular-nums text-[11px] text-zinc-700 hidden sm:inline">
-                            {Math.round(item.rho_A * 100)}% vs {Math.round(item.rho_B * 100)}%
-                          </span>
-                          <span className="font-mono tabular-nums text-xs font-semibold text-zinc-900">
+                        <div className="shrink-0 flex items-center gap-2.5">
+                          <span className="font-mono text-[11px] text-[#0c2340]">
                             CDI {Number(item.cdi_risk).toFixed(2)}
                           </span>
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-200 bg-white font-mono text-[11px] uppercase tracking-wider">
-                            <span className={`w-1.5 h-1.5 rounded-full ${tag.dot}`} />
-                            <span className={tag.text}>{tag.label}</span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${b.bg} ${b.text} ${b.border}`}
+                          >
+                            <BIcon className="w-3 h-3" />
+                            {b.label}
                           </span>
-                          <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" />
+                          <ArrowUpRight className="w-3.5 h-3.5 text-[#8c7535]" />
                         </div>
                       </button>
                     );
                   })}
                 </div>
               </div>
-
-              {/* Selected Discrepancy Unified Split Diff + Metrics */}
-              {selectedExplorerItem && explorerCamo && explorerMetrics && (
-                <div className="space-y-3">
-                  <div className="rounded-md bg-white border border-zinc-200 px-4 py-3 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
-                        <span>{selectedExplorerItem.id}</span>
-                        <span>·</span>
-                        <span>{selectedExplorerItem.category}</span>
-                      </div>
-                      <p className="text-sm text-zinc-900 leading-relaxed">
-                        {selectedExplorerItem.prompt}
-                      </p>
-                    </div>
-                    <span className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-zinc-700">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          isBatchDemoData ? "bg-amber-500" : "bg-emerald-600"
-                        }`}
-                      />
-                      {isBatchDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
-                    </span>
-                  </div>
-
-                  <DualStreamCompare
-                    camo={explorerCamo}
-                    streamA={selectedExplorerItem.output_A || ""}
-                    streamB={selectedExplorerItem.output_B || ""}
-                    streaming={false}
-                    metrics={explorerMetrics}
-                    ctxA={DEFAULT_AUDITOR_CTX}
-                    ctxB={DEFAULT_CANARY_CTX}
-                    metadataLayers={metadataLayers}
-                  />
-
-                  <RefusalGauge
-                    metrics={explorerMetrics}
-                    tamperState={batchTamperState}
-                    onExport={handleExport}
-                    onTamper={() => handleTamper()}
-                    onVerifyIntegrity={() => handleVerifyIntegrity()}
-                  />
-
-                  <EvidenceDrawer>
-                    <PcaScatterPlot
-                      evalPoints={evalCluster}
-                      civilPoints={civilCluster}
-                      camouflageResult={explorerCamo}
-                      frozenEntities={[]}
-                    />
-                    <MerkleCustodyBar
-                      merkleRoot={selectedExplorerItem.leaf_hash || suiteSummary.merkle_root}
-                      latestLeaf={selectedExplorerItem}
-                      leafCount={suiteSummary.total_audited ?? batchItems.length}
-                      tamperState={batchTamperState}
-                    />
-                  </EvidenceDrawer>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ================================================================
-            SECONDARY TAB: SINGLE PROMPT PROBE
-           ================================================================ */}
-        {activeTab === "single" && (
-          <div className="space-y-4">
-            <Composer
-              value={input}
-              onChange={setInput}
-              onSend={() => runAudit(input)}
-              disabled={busy || batchRunning}
-              engineMode={engineMode}
-              selectedModel={selectedModel}
-            />
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500 mr-1">
-                Preset Probes:
-              </span>
-              {STARTER_CHIPS.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={busy || batchRunning}
-                  onClick={() => runAudit(c.formal_prompt, c.id)}
-                  className="rounded-md bg-white hover:bg-zinc-100 border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-800 transition-colors disabled:opacity-50"
-                >
-                  {c.pillLabel}
-                </button>
-              ))}
-            </div>
-
-            {audits.length === 0 && (
-              <div className="rounded-md bg-white border border-zinc-200 p-6 text-center text-xs text-zinc-500 font-mono">
-                Enter a prompt above or select a preset probe to stream Channel A (Auditor) vs.
-                Channel B (Canary) side-by-side.
-              </div>
             )}
 
-            <div className="space-y-6">
-              {audits.map((a) => (
-                <section key={a.id} className="space-y-3" aria-label="Single prompt audit">
-                  <div className="rounded-md bg-white border border-zinc-200 px-4 py-3 flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-0.5">
-                        Audited Prompt
-                      </div>
-                      <p className="text-sm leading-relaxed text-zinc-900">{a.prompt}</p>
-                    </div>
-                    <span className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-zinc-700">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          a.isDemoData ? "bg-amber-500" : "bg-emerald-600"
-                        }`}
-                      />
-                      {a.isDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
-                    </span>
-                  </div>
-
-                  {!a.camo && (
-                    <p className="text-xs font-mono text-zinc-500 animate-pulse">
-                      Computing 384D semantic paraphrase (cos &gt;= 0.78)…
-                    </p>
-                  )}
-
-                  {a.camo && (
-                    <DualStreamCompare
-                      camo={a.camo}
-                      streamA={a.streamA}
-                      streamB={a.streamB}
-                      streaming={!a.done}
-                      metrics={a.metrics}
-                      ctxA={DEFAULT_AUDITOR_CTX}
-                      ctxB={DEFAULT_CANARY_CTX}
-                      metadataLayers={metadataLayers}
-                    />
-                  )}
-
-                  {a.done && a.metrics && (
-                    <>
-                      <RefusalGauge
-                        metrics={a.metrics}
-                        tamperState={a.tamper}
-                        onExport={handleExport}
-                        onTamper={() => handleTamper(a)}
-                        onVerifyIntegrity={() => handleVerifyIntegrity(a.id)}
-                      />
-                      <EvidenceDrawer>
-                        <PcaScatterPlot
-                          evalPoints={evalCluster}
-                          civilPoints={civilCluster}
-                          camouflageResult={a.camo}
-                          frozenEntities={a.frozen}
-                        />
-                        <MerkleCustodyBar
-                          merkleRoot={a.merkleRoot || lastRootRef.current}
-                          latestLeaf={a.leaf}
-                          leafCount={audits.filter((x) => x.done).length}
-                          tamperState={a.tamper}
-                        />
-                      </EvidenceDrawer>
-                    </>
-                  )}
-                </section>
-              ))}
-              <div ref={endRef} />
+            {/* 3-Item Methodology Strip */}
+            <div className="pt-4 border-t border-[#e5dec9] grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Zero System-Prompt Tampering
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  Both channels share identical generation parameters (seed, temperature, max tokens)
+                  and untouched system instructions—eliminating prompt bias.
+                </p>
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Metadata &amp; Framing Isolation
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  We vary only deployment context metadata (auditor harness vs. organic consumer
+                  origin) and semantically invariant phrasing (cos &ge; 0.78).
+                </p>
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-[#0c2340] mb-1">
+                  Side-Channel &amp; Cryptographic Proof
+                </h2>
+                <p className="text-xs leading-relaxed text-[#0c2340]/80">
+                  Nanosecond TTFT latency deltas and refusal shifts are sealed into an RFC 8785
+                  SHA-256 Merkle dossier for independent verification.
+                </p>
+              </div>
             </div>
+
+            <p className="text-center font-mono text-[11px] text-[#0c2340]/55">
+              Model-Agnostic BYOM Architecture · Live Local Ollama Weights + CPU Embeddings · RFC
+              8785 Audit Ledger
+            </p>
           </div>
-        )}
-      </main>
+        </main>
+      )}
+
+      {/* Active Chat Thread */}
+      {inChat && (
+        <>
+          <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-7 space-y-10">
+            {audits.map((a) => (
+              <section key={a.id} className="space-y-4" aria-label="Audit">
+                <div className="rounded-2xl bg-white border border-[#e5dec9] shadow-sm px-5 py-4 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-medium text-[#8c7535] mb-1">Audited prompt</div>
+                    <p className="text-[15px] leading-relaxed text-[#0c2340]">{a.prompt}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 font-mono text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                      a.isDemoData
+                        ? "bg-[#efe9d9] text-[#8c7535] border-[#ae9142]"
+                        : "bg-[#b3dac5] text-[#0a843d] border-[#0a843d]"
+                    }`}
+                  >
+                    {a.isDemoData ? "DEMO DATA" : "LIVE EVALUATION"}
+                  </span>
+                </div>
+
+                {!a.camo && (
+                  <p className="text-sm text-[#8c7535] animate-pulse px-1">
+                    Rewriting prompt for the production canary channel…
+                  </p>
+                )}
+
+                {a.camo && (
+                  <DualStreamCompare
+                    camo={a.camo}
+                    streamA={a.streamA}
+                    streamB={a.streamB}
+                    streaming={!a.done}
+                    metrics={a.metrics}
+                    ctxA={DEFAULT_AUDITOR_CTX}
+                    ctxB={DEFAULT_CANARY_CTX}
+                  />
+                )}
+
+                {a.done && a.metrics && (
+                  <>
+                    <RefusalGauge
+                      metrics={a.metrics}
+                      tamperState={a.tamper}
+                      onExport={handleExport}
+                      onTamper={() => handleTamper(a)}
+                      onVerifyIntegrity={() => handleVerifyIntegrity(a.id)}
+                    />
+                    <EvidenceDrawer>
+                      <PcaScatterPlot
+                        evalPoints={evalCluster}
+                        civilPoints={civilCluster}
+                        camouflageResult={a.camo}
+                        frozenEntities={a.frozen}
+                      />
+                      <MerkleCustodyBar
+                        merkleRoot={a.merkleRoot || lastRootRef.current}
+                        latestLeaf={a.leaf}
+                        leafCount={audits.filter((x) => x.done).length}
+                        tamperState={a.tamper}
+                      />
+                    </EvidenceDrawer>
+                  </>
+                )}
+              </section>
+            ))}
+            <div ref={endRef} />
+          </main>
+        </>
+      )}
 
       <SuiteReportDrawer
         open={suiteDrawerOpen}
         onClose={() => setSuiteDrawerOpen(false)}
         summary={suiteSummary}
-        onSelectItem={handleSelectExplorerRow}
+        onSelectItem={handleSelectSuiteItem}
         onExportDossier={handleExport}
         onVerifyBatchIntegrity={() => handleVerifyIntegrity()}
         onSimulateBatchTamper={() => handleTamper()}
