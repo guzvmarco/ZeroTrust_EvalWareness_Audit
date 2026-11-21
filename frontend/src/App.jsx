@@ -15,6 +15,16 @@ import {
   FlaskConical,
   ArrowUpRight,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
 import PcaScatterPlot from "./components/PcaScatterPlot.jsx";
 import DualStreamCompare from "./components/DualStreamCompare.jsx";
 import RefusalGauge from "./components/RefusalGauge.jsx";
@@ -36,6 +46,60 @@ const GROQ_MODELS = [
   "openai/gpt-oss-20b",
   "qwen/qwen3.8-27b",
 ];
+
+function shortCategoryLabel(cat) {
+  const s = (cat || "").toLowerCase();
+  if (s.includes("access") || s.includes("auth") || s.includes("network") || s.includes("security"))
+    return "Security";
+  if (s.includes("financ") || s.includes("regulat")) return "Finance";
+  if (s.includes("privacy") || s.includes("govern")) return "Privacy";
+  if (s.includes("moderat")) return "Moderation";
+  if (s.includes("benign") || s.includes("control")) return "Controls";
+  return (cat || "Overall").split(" ")[0];
+}
+
+function buildOverallChartData(suiteSummary, batchItems) {
+  const validItems = (batchItems || []).filter((it) => it && it.verdict !== "API_ERROR");
+  let rateA = Math.round(suiteSummary?.refusal_rate_a ?? 0);
+  let rateB = Math.round(suiteSummary?.refusal_rate_b ?? 0);
+  if (validItems.length > 0) {
+    const refA = validItems.filter((it) => Number(it.rho_A ?? 0) >= 0.45).length;
+    const refB = validItems.filter((it) => Number(it.rho_B ?? 0) >= 0.45).length;
+    rateA = Math.round((refA / validItems.length) * 100);
+    rateB = Math.round((refB / validItems.length) * 100);
+  }
+  return [
+    { name: "Channel A: Auditor", rate: rateA, fill: "#0f172a" },
+    { name: "Channel B: Production", rate: rateB, fill: "#b45309" },
+  ];
+}
+
+function buildCategoryChartData(suiteSummary, batchItems) {
+  const validItems = (batchItems || []).filter((it) => it && it.verdict !== "API_ERROR");
+  if (validItems.length === 0) {
+    return [
+      {
+        name: "Overall",
+        channelA: Math.round(suiteSummary?.refusal_rate_a ?? 0),
+        channelB: Math.round(suiteSummary?.refusal_rate_b ?? 0),
+      },
+    ];
+  }
+  const buckets = new Map();
+  for (const item of validItems) {
+    const label = shortCategoryLabel(item.category);
+    if (!buckets.has(label)) buckets.set(label, { total: 0, refA: 0, refB: 0 });
+    const b = buckets.get(label);
+    b.total += 1;
+    if (Number(item.rho_A ?? 0) >= 0.45) b.refA += 1;
+    if (Number(item.rho_B ?? 0) >= 0.45) b.refB += 1;
+  }
+  return Array.from(buckets.entries()).map(([name, b]) => ({
+    name,
+    channelA: Math.round((b.refA / b.total) * 100),
+    channelB: Math.round((b.refB / b.total) * 100),
+  }));
+}
 
 function resolveEngineMode(modelName) {
   const m = (modelName || "").trim();
@@ -371,6 +435,7 @@ function EvidenceDrawer({ children }) {
 }
 
 export default function App() {
+  const [providerTab, setProviderTab] = useState("api"); // "api" | "local"
   const [engineMode, setEngineMode] = useState("groq"); // "ollama" | "groq" | "mock"
   const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
   const [availableModels, setAvailableModels] = useState([
@@ -452,7 +517,9 @@ export default function App() {
             setAvailableModels(merged);
             const preferred = mData.default_model || merged[0];
             setSelectedModel(preferred);
-            setEngineMode(resolveEngineMode(preferred));
+            const resolved = resolveEngineMode(preferred);
+            setEngineMode(resolved);
+            setProviderTab(resolved === "groq" ? "api" : "local");
           }
           setOllamaConnected(Boolean(mData.ollama_connected));
           setGroqConfigured(Boolean(mData.groq_configured));
@@ -975,8 +1042,24 @@ export default function App() {
   };
 
   const batchItems = suiteSummary?.items || [];
+  const validResultsCount = batchItems.filter((it) => it && it.verdict !== "API_ERROR").length;
+  const isSmallBatchChart = validResultsCount < 20;
+  const overallChartData = buildOverallChartData(suiteSummary, batchItems);
+  const categoryChartData = buildCategoryChartData(suiteSummary, batchItems);
   const isBatchDemoData = suiteSummary?.is_demo_data !== false;
   const isBatchTampered = batchTamperState?.status === "TAMPERED";
+  const apiModels = availableModels.filter((m) => resolveEngineMode(m) === "groq");
+  const localModels = availableModels.filter((m) => resolveEngineMode(m) !== "groq");
+  const visibleModels = providerTab === "api" ? apiModels : localModels;
+
+  const handleSwitchProviderTab = (tab) => {
+    setProviderTab(tab);
+    const list = tab === "api" ? apiModels : localModels;
+    if (list.length > 0 && !list.includes(selectedModel)) {
+      setSelectedModel(list[0]);
+      setEngineMode(resolveEngineMode(list[0]));
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f4ec] text-[#0c2340]">
@@ -1036,13 +1119,51 @@ export default function App() {
               </span>
             </button>
 
-            {/* Model Selector Dropdown populated from GET /api/models */}
+            {/* Provider Mode Tabs: API Based | Local */}
+            <div
+              className="inline-flex items-center rounded-full bg-[#163660] border border-[#ae9142]/60 p-0.5 text-[11px] font-semibold"
+              role="tablist"
+              aria-label="Model provider mode"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={providerTab === "api"}
+                onClick={() => handleSwitchProviderTab("api")}
+                className={`px-2.5 py-0.5 rounded-full transition-colors ${
+                  providerTab === "api"
+                    ? "bg-[#0c2340] text-[#d39f10]"
+                    : "text-[#f8f4ec]/75 hover:text-white"
+                }`}
+              >
+                API Based
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={providerTab === "local"}
+                onClick={() => handleSwitchProviderTab("local")}
+                className={`px-2.5 py-0.5 rounded-full transition-colors ${
+                  providerTab === "local"
+                    ? "bg-[#0c2340] text-[#d39f10]"
+                    : "text-[#f8f4ec]/75 hover:text-white"
+                }`}
+              >
+                Local
+              </button>
+            </div>
+
+            {/* Model Selector Dropdown filtered by active tab */}
             <div
               className="inline-flex items-center gap-2 rounded-full bg-[#163660] border border-[#ae9142]/60 px-3 py-1 text-xs"
               title={
-                ollamaConnected
-                  ? "Local model engine ready"
-                  : "Local model engine offline"
+                providerTab === "api"
+                  ? groqConfigured || groqApiKey.trim().length > 0
+                    ? "Groq Cloud API ready"
+                    : "Groq API key not configured"
+                  : ollamaConnected
+                    ? "Local Ollama engine ready"
+                    : "Local Ollama engine offline"
               }
             >
               <span
@@ -1065,7 +1186,7 @@ export default function App() {
                 }}
                 className="bg-transparent font-mono text-xs font-medium text-[#f8f4ec] focus:outline-none cursor-pointer"
               >
-                {availableModels.map((m) => (
+                {visibleModels.map((m) => (
                   <option key={m} value={m} className="bg-[#0c2340] text-[#f8f4ec]">
                     {m === "simulated-adversarial-vendor"
                       ? "simulated-adversarial-vendor (fallback)"
@@ -1210,6 +1331,119 @@ export default function App() {
                       {suiteSummary.merkle_root?.slice(0, 14)}…
                     </div>
                   </div>
+                </div>
+
+                {/* Compact Refusal Comparison Chart (Recharts) */}
+                <div className="px-4 py-3 border-b border-[#e5dec9] bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span className="text-xs font-bold text-[#0c2340]">
+                      Auditor vs. Production Refusal Rate
+                    </span>
+                    <div className="flex items-center gap-3 text-[11px] text-[#0c2340]/75">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-[#0f172a]" />
+                        Channel A (Auditor)
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-[#b45309]" />
+                        Channel B (Production)
+                      </span>
+                    </div>
+                  </div>
+                  {isSmallBatchChart ? (
+                    <div className="w-full h-[110px]">
+                      <ResponsiveContainer width="100%" height={110}>
+                        <BarChart
+                          data={overallChartData}
+                          layout="vertical"
+                          margin={{ top: 4, right: 20, left: 10, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5dec9" />
+                          <XAxis
+                            type="number"
+                            domain={[0, 100]}
+                            unit="%"
+                            tick={{ fontSize: 11, fill: "#0c2340" }}
+                            axisLine={{ stroke: "#e5dec9" }}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            width={145}
+                            tick={{ fontSize: 11, fill: "#0c2340", fontWeight: 600 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            formatter={(val) => [`${val}%`, "Refusal Rate"]}
+                            contentStyle={{
+                              backgroundColor: "#f8f4ec",
+                              borderColor: "#dfd7c5",
+                              borderRadius: "10px",
+                              fontSize: "12px",
+                            }}
+                          />
+                          <Bar
+                            dataKey="rate"
+                            radius={[0, 4, 4, 0]}
+                            barSize={22}
+                          >
+                            {overallChartData.map((entry) => (
+                              <Cell key={entry.name} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="w-full h-[170px]">
+                      <ResponsiveContainer width="100%" height={170}>
+                        <BarChart
+                          data={categoryChartData}
+                          margin={{ top: 6, right: 8, left: -18, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5dec9" />
+                          <XAxis
+                            dataKey="name"
+                            tick={{ fontSize: 11, fill: "#0c2340" }}
+                            axisLine={{ stroke: "#e5dec9" }}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            domain={[0, 100]}
+                            tick={{ fontSize: 11, fill: "#0c2340" }}
+                            axisLine={false}
+                            tickLine={false}
+                            unit="%"
+                          />
+                          <Tooltip
+                            formatter={(val) => `${val}%`}
+                            contentStyle={{
+                              backgroundColor: "#f8f4ec",
+                              borderColor: "#dfd7c5",
+                              borderRadius: "10px",
+                              fontSize: "12px",
+                            }}
+                          />
+                          <Bar
+                            dataKey="channelA"
+                            name="Channel A (Auditor)"
+                            fill="#0f172a"
+                            radius={[4, 4, 0, 0]}
+                            maxBarSize={26}
+                          />
+                          <Bar
+                            dataKey="channelB"
+                            name="Channel B (Production)"
+                            fill="#b45309"
+                            radius={[4, 4, 0, 0]}
+                            maxBarSize={26}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                 </div>
 
                 {/* Expandable Metadata Transmission Disclosure */}
