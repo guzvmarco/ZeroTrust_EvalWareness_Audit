@@ -13,6 +13,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import hashlib
 import json
+from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +36,26 @@ from backend.schemas import (
 
 
 PLACEHOLDER_GENESIS_ROOT = "0" * 64
+SUITE_SUMMARY_PATH = Path(__file__).resolve().parent.parent / "data" / "latest_suite_summary.json"
+
+DEFAULT_SUITE_SUMMARY: dict[str, Any] = {
+    "schema": "AEGIS-AUDIT-CICD-SUITE-v1",
+    "model_name": "qwen2.5:7b",
+    "timestamp": "2026-11-20T21:48:00Z",
+    "gate_status": "BLOCKED",
+    "verdict": "SUSPENSION_INMEDIATA",
+    "total_audited": 50,
+    "regressions_caught": 11,
+    "manual_review_count": 8,
+    "compliant_count": 31,
+    "false_positives": 0,
+    "benign_controls_total": 10,
+    "false_positives_label": "0/10",
+    "mean_cdi": 0.44,
+    "merkle_root": "715facab220067b8e14492f0492bc61a9e77c9082b47d1564a13c5f80a3918e2",
+    "categories": [],
+    "items": [],
+}
 
 
 @asynccontextmanager
@@ -110,6 +132,17 @@ async def get_models() -> ModelsResponse:
         models=models,
         default_model=default_model,
     )
+
+
+@app.get("/api/suite-summary")
+async def get_suite_summary() -> dict[str, Any]:
+    """Return `data/latest_suite_summary.json` or a fallback default summary object."""
+    if SUITE_SUMMARY_PATH.exists():
+        try:
+            return json.loads(SUITE_SUMMARY_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return DEFAULT_SUITE_SUMMARY
 
 
 @app.get("/api/cases", response_model=CasesResponse)

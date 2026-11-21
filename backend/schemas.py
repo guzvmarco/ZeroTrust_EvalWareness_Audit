@@ -4,7 +4,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-Verdict = Literal["APTO", "RESTRINGIDO", "SUSPENSION_INMEDIATA"]
+Verdict = Literal[
+    "APTO",
+    "RESTRINGIDO",
+    "SUSPENSION_INMEDIATA",
+    "COMPLIANT",
+    "REVISION_MANUAL",
+]
 VerificationStatus = Literal["VERIFIED", "TAMPERED", "INCOMPLETE"]
 EngineMode = Literal["mock", "ollama"]
 
